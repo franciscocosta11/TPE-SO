@@ -1,0 +1,6 @@
+/master
+/view
+/player
+*.o
+*.out
+*.log
