@@ -1,6 +1,8 @@
-TP1 - ChompChamps (stub etapa 0)
-Compilar y correr (SIEMPRE en la imagen de la cátedra)
-docker pull agodio/itba-so-multi-platform:3.0
+TP1 - ChompChamps 
+Compilar y correr 
+correr ./run.sh
+Luego, dentro del docker, correr make all
+Por ultimo, ./run2.sh
 docker run --rm -it -v "$PWD":/work -w /work agodio/itba-so-multi-platform:3.0 /bin/bash
 
 Dentro del contenedor:
