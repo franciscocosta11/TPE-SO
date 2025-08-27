@@ -11,9 +11,25 @@ CUTEST_REQ=$(CUTEST_DIR)/AllTests.c $(CUTEST_DIR)/CuTestTest.c
 SRC_COMMON=src/common/util.c src/common/state.c src/common/rules.c src/common/sync.c
 OBJ_COMMON=$(SRC_COMMON:.c=.o)
 
+# Archivos de lógica del master (el código compartido)
+SRC_MASTER_LOGIC=src/master/master_logic.c
+OBJ_MASTER_LOGIC=$(SRC_MASTER_LOGIC:.c=.o)
+
+# --- CONFIGURACIÓN DE CUTEST ---
+CUTEST_DIR=CuTest
+SRC_CUTEST=$(CUTEST_DIR)/CuTest.c
+OBJ_CUTEST=$(SRC_CUTEST:.c=.o)
+
+# --- EJECUTABLES ---
+TEST_BINS=test_master
+
+# ==============================================================================
+# --- TARGETS PRINCIPALES ---
+# ==============================================================================
 all: master view player
 
-master: src/master/main.c $(OBJ_COMMON)
+# El programa 'master' depende de su 'main', la lógica compartida y lo común
+master: src/master/main.c $(OBJ_MASTER_LOGIC) $(OBJ_COMMON)
 > $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 view: src/view/main.c $(OBJ_COMMON)
@@ -29,7 +45,8 @@ test:
 > $(MAKE) -C $(CUTEST_DIR) test
 
 clean:
-> rm -f master view player $(OBJ_COMMON)
-> $(MAKE) -C $(CUTEST_DIR) clean
+> rm -f master view player $(OBJ_COMMON) $(OBJ_MASTER_LOGIC) $(OBJ_CUTEST) $(TEST_BINS)
+
+.PHONY: all clean test
 
 .PHONY: all clean cutest test
