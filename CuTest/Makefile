@@ -1,18 +1,20 @@
 # I am not very good at Makefiles.
 
 CFLAGS += -Wall -g
-INCLUDES = -I.
+INCLUDES = -I. -I../include
 
-all: bin/CuTestTest
+TEST_SRCS=AllTests.c CuTest.c ../tests/test_state.c ../src/common/state.c
+
+all: bin/tests
 
 bin:
 	mkdir -p $@
 
-test: bin/CuTestTest
-	@bin/CuTestTest
+test: bin/tests
+	@bin/tests
 
-bin/CuTestTest: AllTests.c CuTestTest.c CuTest.c | bin
-	$(CC) $(CFLAGS) $(INCLUDES) -Wno-address -lm -o $@ $^
+bin/tests: $(TEST_SRCS) | bin
+	$(CC) $(CFLAGS) $(INCLUDES) -Wno-address -lm -o $@ $(TEST_SRCS)
 
 clean:
 	@rm -rf *~ bin

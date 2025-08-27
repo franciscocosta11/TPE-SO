@@ -1,54 +1,35 @@
 .RECIPEPREFIX := >
 CC=gcc
-CFLAGS=-std=c11 -O2 -Wall -Wextra -Werror -pedantic
-CPPFLAGS=-Iinclude
-LDFLAGS=-pthread
+CFLAGS=-std=c11 -O2 -Wall -Wextra -Werror -pedantic -Iinclude
+LDFLAGS=-pthread -lrt
 
-# CuTest (lo dejo como lo tenías)
+# CuTest
 CUTEST_DIR=CuTest
 CUTEST_REQ=$(CUTEST_DIR)/AllTests.c $(CUTEST_DIR)/CuTestTest.c
 
-# Comunes (agrego log.c a lo que ya tenías)
-SRC_COMMON=src/common/util.c src/common/log.c
+# 👇 Agrego sync.c acá
+SRC_COMMON=src/common/util.c src/common/state.c src/common/rules.c src/common/sync.c
 OBJ_COMMON=$(SRC_COMMON:.c=.o)
 
-# ======================================
-# Targets principales
-# ======================================
 all: master view player
 
 master: src/master/main.c $(OBJ_COMMON)
-> $(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $^ $(LDFLAGS)
+> $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 view: src/view/main.c $(OBJ_COMMON)
-> $(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $^ $(LDFLAGS)
+> $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-player: src/player/main.c $(OBJ_COMMON)
-> $(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $^ $(LDFLAGS)
+player: src/player/main.c $(filter-out src/common/sync.o,$(OBJ_COMMON))
+> $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-# ======================================
-# Objetos comunes
-# ======================================
 src/common/%.o: src/common/%.c
-> $(CC) $(CFLAGS) $(CPPFLAGS) -c -o $@ $<
+> $(CC) $(CFLAGS) -c -o $@ $<
 
-# ======================================
-# Atajos de desarrollo (día 2)
-# ======================================
-# Compila y corre la vista (usa estado dummy si no existe /game_state)
-dev: view
-> ./view
+test:
+> $(MAKE) -C $(CUTEST_DIR) test
 
-run_view: view
-> ./view
-
-# ======================================
-# Limpieza
-# ======================================
 clean:
 > rm -f master view player $(OBJ_COMMON)
 > $(MAKE) -C $(CUTEST_DIR) clean
 
-CPPFLAGS=-Iinclude -D_POSIX_C_SOURCE=200809L
-
-.PHONY: all clean dev run_view
+.PHONY: all clean cutest test

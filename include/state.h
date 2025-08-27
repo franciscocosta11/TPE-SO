@@ -1,45 +1,57 @@
 #ifndef STATE_H
 #define STATE_H
 
-#include <stddef.h>
+#include <sys/types.h>
+#include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <stddef.h>
+#include <string.h>
 
-/**
- * Estructura mínima del estado compartido que la vista necesita
- * para render básico. B puede extenderla, pero estos campos
- * deben preservarse para no romper compatibilidad binaria.
- *
- * Layout esperado:
- *  - w, h: dimensiones del tablero
- *  - n_players: cantidad de jugadores
- *  - game_over: bandera de fin de juego (0/1)
- *  - board: puntero a arreglo contiguo de w*h celdas (enteros)
- *
- * Convención de celdas (placeholder visual):
- *  - >0 : recompensa (1..9)
- *  -  0 : libre
- *  - <0 : capturada (valor negativo suele codificar dueño)
- */
-typedef struct GameState {
-    int32_t w;
-    int32_t h;
-    int32_t n_players;
-    int32_t game_over;
-    // Nota: el tablero suele estar contiguo a la estructura o referenciado.
-    // Para la vista asumimos que board es un puntero válido en el mapeo.
-    int32_t *board;
+#define MAX_PLAYERS 9
+#define NAME_LEN    16
 
-    // Sugerido (la vista puede usarlo si existe):
-    struct {
-        int32_t x, y;
-        int32_t score;
-        int32_t alive;
-    } P[8]; // hasta 8 jugadores, extensible
+typedef enum {
+    DIR_N=0, DIR_NE=1, DIR_E=2, DIR_SE=3,
+    DIR_S=4, DIR_SW=5, DIR_W=6, DIR_NW=7
+} Dir;
+
+
+
+typedef struct Player { 
+    char name[NAME_LEN]; 
+    unsigned score, invalids, valids; 
+    unsigned short x,y; 
+    pid_t pid; 
+    bool blocked; 
+} Player;
+
+typedef struct GameState { 
+    unsigned short w,h; 
+    unsigned n_players; 
+    Player P[MAX_PLAYERS]; 
+    bool game_over; 
+    int board[]; 
 } GameState;
 
-/** índice lineal en el tablero contiguo */
-static inline size_t idx(const GameState *gs, int x, int y) {
-    return (size_t)y * (size_t)gs->w + (size_t)x;
-}
+int  rules_validate(const GameState *g, int pid, Dir d, int *gain);
+void rules_apply(GameState *g, int pid, Dir d);
+
+
+void state_zero(GameState* g, unsigned w, unsigned h, unsigned n);
+
+size_t state_size(unsigned w, unsigned h);
+
+int idx(const GameState *g, unsigned x, unsigned y);
+
+void board_fill_rewards(GameState *g, unsigned seed);
+
+void players_place_grid(GameState *g);
+
+int player_can_move(const GameState *g, int pid);
+
+static inline int cell_reward(int v)         { return v > 0 ? v : 0; }
+static inline int cell_owner(int v)          { return v < 0 ? (-v - 1) : -1; }
+static inline int make_captured(int owner_i) { return -(owner_i + 1); }
 
 #endif // STATE_H
