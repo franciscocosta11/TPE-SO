@@ -1,0 +1,51 @@
+#include "state.h"
+
+static void dir_delta(Dir d, int *dx, int *dy) {
+    static const int DX[8] = { 0, 1, 1, 1, 0,-1,-1,-1 };
+    static const int DY[8] = {-1,-1, 0, 1, 1, 1, 0,-1 };
+    *dx = DX[d]; *dy = DY[d];
+}
+
+int rules_validate(const GameState *g, int pid, Dir d, int *gain) {
+    if (pid < 0 || (unsigned)pid >= g->n_players) return 0;
+    int dx, dy; dir_delta(d, &dx, &dy);
+
+    int x = (int)g->P[pid].x + dx;
+    int y = (int)g->P[pid].y + dy;
+
+    if (x < 0 || y < 0 || x >= g->w || y >= g->h) return 0;
+
+    int v = g->board[idx(g, (unsigned)x, (unsigned)y)];
+    if (cell_owner(v) != -1) return 0;  // ya capturada por alguien
+
+    if (gain) *gain = cell_reward(v);   // 1..9
+    return 1;
+}
+
+void rules_apply(GameState *g, int pid, Dir d) {
+    int dx, dy; dir_delta(d, &dx, &dy);
+
+    int nx = (int)g->P[pid].x + dx;
+    int ny = (int)g->P[pid].y + dy;
+    int v  = g->board[idx(g, (unsigned)nx, (unsigned)ny)];
+    int r  = cell_reward(v);
+
+    // mover
+    g->P[pid].x = (unsigned short)nx;
+    g->P[pid].y = (unsigned short)ny;
+
+    // capturar la celda
+    g->board[idx(g, (unsigned)nx, (unsigned)ny)] = make_captured(pid);
+
+    // puntaje y contadores
+    g->P[pid].score  += (unsigned)r;
+    g->P[pid].valids += 1;
+}
+
+int player_can_move(const GameState *g, int pid) {
+    if (pid < 0 || (unsigned)pid >= g->n_players) return 0;
+    for (int d = 0; d < 8; ++d) {
+        if (rules_validate(g, pid, (Dir)d, NULL)) return 1;
+    }
+    return 0;
+}
