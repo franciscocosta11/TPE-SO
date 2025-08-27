@@ -128,7 +128,13 @@ int main(void) {
             goto collect_children;
         }
 
-        int rv = select(maxfd + 1, &rfds, NULL, NULL, NULL);
+        struct timeval tv;
+        tv.tv_sec = 0;
+        tv.tv_usec = 300000; // 300 ms
+        int rv = select(maxfd + 1, &rfds, NULL, NULL, &tv);
+        if (rv == 0) {
+            goto collect_children;
+        }
         if (rv < 0) {
             if (errno == EINTR) continue;
             perror("select");
@@ -198,6 +204,12 @@ int main(void) {
     /* Señalar fin de juego en el estado compartido */
     wrlock();
     G->game_over = true;
+    for (int i = 0; i < n_players; ++i) {
+        if (pids[i] > 0) kill(pids[i], SIGTERM); // <signal.h>
+    }
+    for (int i = 0; i < n_players; ++i) {
+        if (pids[i] > 0) waitpid(pids[i], NULL, 0);
+    }
     wrunlock();
 
     printf("done after %d rounds\n", rounds);
