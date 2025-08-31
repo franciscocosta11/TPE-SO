@@ -11,7 +11,9 @@
 #include <errno.h>
 #include <string.h>
 
+#include "shm.h"
 #include "state.h"
+#include "state_access.h"
 #include "sync.h"
 
 static void msleep(int ms) {
@@ -21,31 +23,16 @@ static void msleep(int ms) {
 
 int main(void) {
     /* Adjuntar /game_state (tamaño por fstat) y /game_sync */
-    int gfd = shm_open(SHM_GAME_STATE, O_RDONLY, 0600);
-    if (gfd == -1) {
-        perror("shm_open view");
-        return 1;
-    }
-
-    struct stat st;
-    if (fstat(gfd, &st) == -1) {
-        perror("fstat view");
-        close(gfd);
-        return 1;
-    }
-    size_t GSIZE = (size_t)st.st_size;
-
-    GameState *G = mmap(NULL, GSIZE, PROT_READ, MAP_SHARED, gfd, 0);
-    if (G == MAP_FAILED) {
-        perror("mmap view");
-        close(gfd);
+    size_t GSIZE = 0;
+    GameState *G = (GameState*)shm_attach_map(SHM_GAME_STATE, &GSIZE, PROT_READ);
+    if (!G) {
+        fprintf(stderr, "shm_attach_map view failed\n");
         return 1;
     }
 
     if (sync_attach() != 0) {
         fprintf(stderr, "sync_attach failed\n");
         munmap(G, GSIZE);
-        close(gfd);
         return 1;
     }
 
@@ -87,6 +74,5 @@ int main(void) {
     }
 
     munmap(G, GSIZE);
-    close(gfd);
     return 0;
 }

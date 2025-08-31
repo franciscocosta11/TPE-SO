@@ -8,7 +8,7 @@ CUTEST_DIR=CuTest
 CUTEST_REQ=$(CUTEST_DIR)/AllTests.c $(CUTEST_DIR)/CuTestTest.c
 
 # 👇 Agrego sync.c acá
-SRC_COMMON=src/common/util.c src/common/state.c src/common/rules.c src/common/sync.c
+SRC_COMMON=src/common/util.c src/common/state.c src/common/rules.c src/common/sync.c src/common/shm.c src/common/state_access.c
 OBJ_COMMON=$(SRC_COMMON:.c=.o)
 
 all: master view player
@@ -19,7 +19,7 @@ master: src/master/main.c $(OBJ_COMMON)
 view: src/view/main.c $(OBJ_COMMON)
 > $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-player: src/player/main.c $(filter-out src/common/sync.o,$(OBJ_COMMON))
+player: src/player/main.c $(filter-out src/common/sync.o src/common/shm.o src/common/state_access.o,$(OBJ_COMMON))
 > $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 src/common/%.o: src/common/%.c

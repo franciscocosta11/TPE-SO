@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "state_access.h": "c",
+        "sync.h": "c",
+        "state.h": "c",
+        "shm.h": "c"
+    }
+}
