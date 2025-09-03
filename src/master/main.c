@@ -11,8 +11,10 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <errno.h>
+#include <signal.h>
 
 #include "state.h"
+#include "state_access.h"
 #include "sync.h"
 
 #define MAXP 9
@@ -43,31 +45,27 @@ int main(void) {
     if (n_players > MAXP) n_players = MAXP;
 
     /* --- /game_state en shm --- */
-    int gfd = shm_open(SHM_GAME_STATE, O_CREAT | O_RDWR, 0600);
-    if (gfd == -1) { perror("shm_open(/game_state)"); exit(1); }
-    size_t GSIZE = state_size(W, H);
-    if (ftruncate(gfd, (off_t)GSIZE) == -1) { perror("ftruncate"); exit(1); }
-    GameState *G = mmap(NULL, GSIZE, PROT_READ | PROT_WRITE, MAP_SHARED, gfd, 0);
-    if (G == MAP_FAILED) { perror("mmap(/game_state)"); exit(1); }
+    GameState *G = state_create(W,H);
+    if (!G) { fprintf(stderr, "shm_create_map(/game_state) failed\n"); exit(1); }
 
     /* --- /game_sync para R/W locks --- */
     if (sync_create() != 0) { fprintf(stderr, "sync_create failed\n"); exit(1); }
 
     /* --- estado inicial bajo lock de escritura --- */
-    wrlock();
+    state_write_begin();
     state_zero(G, W, H, N);
     board_fill_rewards(G, 42);
     players_place_grid(G);
-    wrunlock();
+    state_write_end();
 
     /* blocked[] local (para la lógica del master) y reflejado en G->P[].blocked */
     int blocked[MAXP] = {0};
-    wrlock();
+    state_write_begin();
     for (int i = 0; i < (int)N; ++i) {
         blocked[i] = !player_can_move(G, i);
         G->P[i].blocked = blocked[i];
     }
-    wrunlock();
+    state_write_end();
 
     /* --- spawn jugadores (pipes stdout->master) --- */
     int   rfd[MAXP];      // read-ends
@@ -153,7 +151,7 @@ int main(void) {
                 int gain = 0;
 
                 /* Validar y aplicar bajo lock de escritura (modifica G) */
-                wrlock();
+                state_write_begin();
                 int ok = (mv < 8) && rules_validate(G, i, (Dir)mv, &gain);
                 if (ok) {
                     rules_apply(G, i, (Dir)mv);
@@ -172,7 +170,7 @@ int main(void) {
                 if (blocked[i]) {
                     printf("player %d BLOCKED (no moves)\n", i);
                 }
-                wrunlock();
+                state_write_end();
 
                 fflush(stdout);
             } else if (n == 0) {
@@ -202,7 +200,7 @@ int main(void) {
     }
 
     /* Señalar fin de juego en el estado compartido */
-    wrlock();
+    state_write_begin();
     G->game_over = true;
     for (int i = 0; i < n_players; ++i) {
         if (pids[i] > 0) kill(pids[i], SIGTERM); // <signal.h>
@@ -210,14 +208,12 @@ int main(void) {
     for (int i = 0; i < n_players; ++i) {
         if (pids[i] > 0) waitpid(pids[i], NULL, 0);
     }
-    wrunlock();
+    state_write_end();
 
     printf("done after %d rounds\n", rounds);
 
     /* Limpieza */
-    munmap(G, GSIZE);
-    close(gfd);
-    shm_unlink(SHM_GAME_STATE);
+    state_destroy(G);
     sync_destroy();
     return 0;
 }

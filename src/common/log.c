@@ -1,4 +1,4 @@
-// src/common/log.c  (reemplazar completo)
+// src/common/log.c 
 #include "log.h"
 #include <stdio.h>
 #include <stdarg.h>

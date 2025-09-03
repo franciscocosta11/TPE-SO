@@ -7,16 +7,16 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
+#include "shm.h"
 
 #define MAX_PLAYERS 9
 #define NAME_LEN    16
+#define SHM_GAME_STATE "/game_state"
 
 typedef enum {
     DIR_N=0, DIR_NE=1, DIR_E=2, DIR_SE=3,
     DIR_S=4, DIR_SW=5, DIR_W=6, DIR_NW=7
 } Dir;
-
-
 
 typedef struct Player { 
     char name[NAME_LEN]; 
@@ -33,6 +33,10 @@ typedef struct GameState {
     bool game_over; 
     int board[]; 
 } GameState;
+
+GameState* state_create(unsigned w, unsigned h);   // lo llama el master (crea/trunca shm)
+GameState* state_attach(void);   // lo llama la view/jugadores (solo adjunta)
+void state_destroy(GameState *g); // destruir (solo master al final)
 
 int  rules_validate(const GameState *g, int pid, Dir d, int *gain);
 void rules_apply(GameState *g, int pid, Dir d);

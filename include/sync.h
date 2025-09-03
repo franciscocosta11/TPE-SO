@@ -3,16 +3,28 @@
 #include <semaphore.h>
 #include <stddef.h>
 
-#define SHM_GAME_STATE "/game_state"
-#define SHM_GAME_SYNC  "/game_sync"
+#define SHM_GAME_SYNC "/game_sync"
 
-int  sync_create(void);   // lo llama el master (crea/trunca shm y semáforos)
-int  sync_attach(void);   // lo llama la view/jugadores (solo adjunta)
-void sync_destroy(void);  // destruir (solo master al final)
+#define MAX_PLAYERS 9
+
+int sync_create(void);   // lo llama el master (crea/trunca shm y semáforos)
+int sync_attach(void);   // lo llama la view/jugadores (solo adjunta)
+void sync_destroy(void); // destruir (solo master al final)
 
 void rdlock(void);
 void rdunlock(void);
 void wrlock(void);
 void wrunlock(void);
+
+typedef struct
+{
+    sem_t view_update_ready;
+    sem_t view_render_complete;
+    sem_t writer_mutex;
+    sem_t state_mutex;
+    sem_t readers_count_mutex;
+    unsigned int readers_count;
+    sem_t player_turns[MAX_PLAYERS];
+} SyncMem;
 
 #endif
