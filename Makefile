@@ -7,13 +7,16 @@ LDFLAGS=-pthread -lrt
 CUTEST_DIR=CuTest
 CUTEST_REQ=$(CUTEST_DIR)/AllTests.c $(CUTEST_DIR)/CuTestTest.c
 
-# 👇 Agrego sync.c acá
 SRC_COMMON=src/common/util.c src/common/state.c src/common/rules.c src/common/sync.c src/common/shm.c src/common/state_access.c
 OBJ_COMMON=$(SRC_COMMON:.c=.o)
 
+# master-specific sources
+SRC_MASTER=src/master/master_logic.c
+OBJ_MASTER=$(SRC_MASTER:.c=.o)
+
 all: master view player
 
-master: src/master/main.c $(OBJ_COMMON)
+master: src/master/main.c $(OBJ_COMMON) $(OBJ_MASTER)
 > $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 view: src/view/main.c $(OBJ_COMMON)
@@ -23,6 +26,9 @@ player: src/player/main.c $(filter-out src/common/sync.o src/common/shm.o src/co
 > $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 src/common/%.o: src/common/%.c
+> $(CC) $(CFLAGS) -c -o $@ $<
+
+src/master/%.o: src/master/%.c
 > $(CC) $(CFLAGS) -c -o $@ $<
 
 test:
