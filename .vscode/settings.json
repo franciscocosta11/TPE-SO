@@ -3,6 +3,7 @@
         "state_access.h": "c",
         "sync.h": "c",
         "state.h": "c",
-        "shm.h": "c"
+        "shm.h": "c",
+        "unistd.h": "c"
     }
 }

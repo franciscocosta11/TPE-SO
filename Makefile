@@ -7,14 +7,17 @@ LDFLAGS=-pthread -lrt
 CUTEST_DIR=CuTest
 CUTEST_REQ=$(CUTEST_DIR)/AllTests.c $(CUTEST_DIR)/CuTestTest.c
 
-# 👇 ya tenés sync.c/shm.c/state_access.c en común
 SRC_COMMON=src/common/util.c src/common/state.c src/common/rules.c src/common/sync.c src/common/shm.c src/common/state_access.c
 OBJ_COMMON=$(SRC_COMMON:.c=.o)
+
+# master-specific sources
+SRC_MASTER=src/master/master_logic.c
+OBJ_MASTER=$(SRC_MASTER:.c=.o)
 
 all: master view player
 # (no agrego los test a 'all' para no tocar tu flujo normal)
 
-master: src/master/main.c $(OBJ_COMMON)
+master: src/master/main.c $(OBJ_COMMON) $(OBJ_MASTER)
 > $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 view: src/view/main.c $(OBJ_COMMON)
@@ -38,6 +41,9 @@ stress: reader_stress writer_tick
 > if [ -x scripts/stress.sh ]; then scripts/stress.sh; else echo "Tip: creá scripts/stress.sh y hacelo ejecutable"; fi
 
 src/common/%.o: src/common/%.c
+> $(CC) $(CFLAGS) -c -o $@ $<
+
+src/master/%.o: src/master/%.c
 > $(CC) $(CFLAGS) -c -o $@ $<
 
 test:

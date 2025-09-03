@@ -17,7 +17,9 @@ void* shm_create_map(const char *name, size_t size, int prot) {
 }
 
 void* shm_attach_map(const char *name, size_t *out_size, int prot) {
-    int fd = shm_open(name, O_RDONLY, 0600);
+    /* Si el mapeo requiere escritura debemos abrir con O_RDWR o mmap fallará con EACCES */
+    int oflags = (prot & PROT_WRITE) ? O_RDWR : O_RDONLY;
+    int fd = shm_open(name, oflags, 0600);
     if (fd == -1) { perror("shm_open attach"); return NULL; }
     struct stat st;
     if (fstat(fd, &st) == -1) { perror("fstat"); close(fd); return NULL; }
