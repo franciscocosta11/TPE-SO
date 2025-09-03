@@ -1,5 +1,5 @@
 #include "state.h"
-
+#include <sys/mman.h>
 
 int idx(const GameState *g, unsigned x, unsigned y) {
     return (int)(y * g->w + x);
@@ -103,4 +103,20 @@ void players_place_grid(GameState *g) {
         g->P[i].blocked = false;      // arranca habilitado
         g->board[idx(g, px, py)] = make_captured((int)i);
     }
+}
+
+GameState* state_create(unsigned w, unsigned h) {
+    size_t size = state_size(w, h);
+    return (GameState*)shm_create_map(SHM_GAME_STATE, size, PROT_READ | PROT_WRITE);
+}
+
+GameState* state_attach(void) {
+    return (GameState*)shm_attach_map(SHM_GAME_STATE, NULL, PROT_READ | PROT_WRITE);
+}
+
+void state_destroy(GameState *g) {
+    if (g == NULL) return;
+    size_t size = state_size(g->w, g->h);
+    munmap(g, size);
+    shm_remove_name(SHM_GAME_STATE);
 }

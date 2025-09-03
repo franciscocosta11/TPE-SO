@@ -6,74 +6,107 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdio.h>
-
-typedef struct {
-    sem_t C;   // torniquete (evita inanición escritor)
-    sem_t D;   // exclusión de escritura
-    sem_t E;   // protege contador F
-    int   F;   // # lectores activos
-} SyncMem;
+#include "shm.h"
 
 static SyncMem *S = NULL;
-static int sync_fd = -1;
+// static int sync_fd = -1;
 
-static int map_sync(int oflags, mode_t mode, int create) {
-    sync_fd = shm_open(SHM_GAME_SYNC, oflags, mode);
-    if (sync_fd == -1) { perror("shm_open(/game_sync)"); return -1; }
-    if (create) {
-        if (ftruncate(sync_fd, (off_t)sizeof(SyncMem)) == -1) { perror("ftruncate"); return -1; }
-    }
-    void *p = mmap(NULL, sizeof(SyncMem), PROT_READ|PROT_WRITE, MAP_SHARED, sync_fd, 0);
-    if (p == MAP_FAILED) { perror("mmap(/game_sync)"); return -1; }
-    S = (SyncMem*)p;
-    return 0;
-}
+// static int map_sync(int oflags, mode_t mode, int create) {
+//     sync_fd = shm_open(SHM_GAME_SYNC, oflags, mode);
+//     if (sync_fd == -1) { perror("shm_open(/game_sync)"); return -1; }
+//     if (create) {
+//         if (ftruncate(sync_fd, (off_t)sizeof(SyncMem)) == -1) { perror("ftruncate"); return -1; }
+//     }
+//     void *p = mmap(NULL, sizeof(SyncMem), PROT_READ|PROT_WRITE, MAP_SHARED, sync_fd, 0);
+//     if (p == MAP_FAILED) { perror("mmap(/game_sync)"); return -1; }
+//     S = (SyncMem*)p;
+//     return 0;
+// }
 
 int sync_create(void) {
-    if (map_sync(O_CREAT|O_RDWR, 0600, 1) != 0) return -1;
-    // inicializar semáforos en memoria compartida (pshared = 1)
-    if (sem_init(&S->C, 1, 1) == -1) { perror("sem_init C"); return -1; }
-    if (sem_init(&S->D, 1, 1) == -1) { perror("sem_init D"); return -1; }
-    if (sem_init(&S->E, 1, 1) == -1) { perror("sem_init E"); return -1; }
-    S->F = 0;
+    S = shm_create_map(SHM_GAME_SYNC, sizeof(SyncMem), PROT_READ | PROT_WRITE);
+    if (S == NULL) return -1;
+
+    // Inicializar todos los semáforos y contadores
+    if (sem_init(&S->view_update_ready, 1, 0) == -1) { perror("sem_init view_update_ready"); return -1; }
+    if (sem_init(&S->view_render_complete, 1, 0) == -1) { perror("sem_init view_render_complete"); return -1; }
+    if (sem_init(&S->writer_mutex, 1, 1) == -1) { perror("sem_init writer_mutex"); return -1; }
+    if (sem_init(&S->state_mutex, 1, 1) == -1) { perror("sem_init state_mutex"); return -1; }
+    if (sem_init(&S->readers_count_mutex, 1, 1) == -1) { perror("sem_init readers_count_mutex"); return -1; }
+    
+    S->readers_count = 0;
+
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        if (sem_init(&S->player_turns[i], 1, 0) == -1) { 
+            perror("sem_init player_turns"); 
+            return -1; 
+        }
+    }
+
     return 0;
 }
 
 int sync_attach(void) {
-    return map_sync(O_RDWR, 0600, 0);
+    S = shm_attach_map(SHM_GAME_SYNC, NULL, PROT_READ | PROT_WRITE);
+    return (S != NULL) ? 0 : -1;
 }
 
 void sync_destroy(void) {
     if (!S) return;
-    sem_destroy(&S->C);
-    sem_destroy(&S->D);
-    sem_destroy(&S->E);
+
+    sem_destroy(&S->view_update_ready);
+    sem_destroy(&S->view_render_complete);
+    sem_destroy(&S->writer_mutex);
+    sem_destroy(&S->state_mutex);
+    sem_destroy(&S->readers_count_mutex);
+
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        sem_destroy(&S->player_turns[i]);
+    }
+
     munmap(S, sizeof(SyncMem));
-    if (sync_fd != -1) close(sync_fd);
-    shm_unlink(SHM_GAME_SYNC);
-    S = NULL; sync_fd = -1;
+    shm_remove_name(SHM_GAME_SYNC);
+    S = NULL;
 }
 
-/* Lectores-escritor sin inanición del escritor (torniquete C) */
+/* Lector-Escritor con prioridad para el escritor */
+
 void rdlock(void) {
-    sem_wait(&S->C);      // pasar por torniquete
-    sem_post(&S->C);
-    sem_wait(&S->E);      // actualizar F
-    S->F++;
-    if (S->F == 1) sem_wait(&S->D);
-    sem_post(&S->E);
+    // Un escritor puede estar esperando, así que pasamos por el torniquete.
+    sem_wait(&S->writer_mutex);
+    sem_post(&S->writer_mutex);
+
+    // Bloqueamos para actualizar el contador de lectores de forma segura.
+    sem_wait(&S->readers_count_mutex);
+    S->readers_count++;
+    if (S->readers_count == 1) {
+        // Si somos el primer lector, bloqueamos el acceso a los escritores.
+        sem_wait(&S->state_mutex);
+    }
+    sem_post(&S->readers_count_mutex);
 }
+
 void rdunlock(void) {
-    sem_wait(&S->E);
-    S->F--;
-    if (S->F == 0) sem_post(&S->D);
-    sem_post(&S->E);
+    // Bloqueamos para actualizar el contador de lectores de forma segura.
+    sem_wait(&S->readers_count_mutex);
+    S->readers_count--;
+    if (S->readers_count == 0) {
+        // Si somos el último lector, permitimos que los escritores pasen.
+        sem_post(&S->state_mutex);
+    }
+    sem_post(&S->readers_count_mutex);
 }
+
 void wrlock(void) {
-    sem_wait(&S->C);      // bloquear nuevas lecturas
-    sem_wait(&S->D);      // exclusión de escritura
+    // Bloqueamos el torniquete para que no entren nuevos lectores.
+    sem_wait(&S->writer_mutex);
+    // Esperamos a que los lectores actuales terminen y bloqueamos para escritura exclusiva.
+    sem_wait(&S->state_mutex);
 }
+
 void wrunlock(void) {
-    sem_post(&S->D);
-    sem_post(&S->C);
+    // Liberamos el bloqueo de escritura.
+    sem_post(&S->state_mutex);
+    // Abrimos el torniquete para que los lectores puedan volver a entrar.
+    sem_post(&S->writer_mutex);
 }

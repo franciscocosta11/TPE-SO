@@ -3,7 +3,7 @@
 CFLAGS += -Wall -g
 INCLUDES = -I. -I../include
 
-TEST_SRCS=AllTests.c CuTest.c ../tests/test_state.c ../src/common/state.c
+TEST_SRCS=AllTests.c CuTest.c ../tests/test_state.c ../src/common/state.c ../src/common/shm.c
 
 all: bin/tests
 
