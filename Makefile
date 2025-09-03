@@ -20,7 +20,7 @@ master: src/master/main.c $(OBJ_COMMON)
 view: src/view/main.c $(OBJ_COMMON)
 > $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-player: src/player/main.c $(filter-out src/common/sync.o src/common/shm.o src/common/state_access.o,$(OBJ_COMMON))
+player: src/player/main.c $(OBJ_COMMON)
 > $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 init_state: tests/init_state.c $(OBJ_COMMON)

@@ -16,7 +16,6 @@
 #include "state.h"
 #include "state_access.h"
 #include "sync.h"
-#include "shm.h"
 
 #define MAXP 9
 
@@ -46,8 +45,7 @@ int main(void) {
     if (n_players > MAXP) n_players = MAXP;
 
     /* --- /game_state en shm --- */
-    size_t GSIZE = state_size(W, H);
-    GameState *G = (GameState*)shm_create_map(SHM_GAME_STATE, GSIZE, PROT_READ | PROT_WRITE);
+    GameState *G = state_create(W,H);
     if (!G) { fprintf(stderr, "shm_create_map(/game_state) failed\n"); exit(1); }
 
     /* --- /game_sync para R/W locks --- */
@@ -215,8 +213,7 @@ int main(void) {
     printf("done after %d rounds\n", rounds);
 
     /* Limpieza */
-    munmap(G, GSIZE);
-    shm_unlink(SHM_GAME_STATE);
+    state_destroy(G);
     sync_destroy();
     return 0;
 }
