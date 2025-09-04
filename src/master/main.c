@@ -79,8 +79,7 @@ int main(int argc, char *argv[]) {
 
 
     /* --- /game_state en shm --- */
-    size_t GSIZE = state_size(W, H);
-    GameState *G = (GameState*)shm_create_map(SHM_GAME_STATE, GSIZE, PROT_READ | PROT_WRITE);
+    GameState *G = state_create(W,H);
     if (!G) { fprintf(stderr, "shm_create_map(/game_state) failed\n"); exit(1); }
 
 
@@ -287,8 +286,7 @@ int main(int argc, char *argv[]) {
 
 
     /* Limpieza */
-    munmap(G, GSIZE);
-    shm_unlink(SHM_GAME_STATE);
+    state_destroy(G);
     sync_destroy();
     return 0;
 }
