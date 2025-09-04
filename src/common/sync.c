@@ -110,3 +110,20 @@ void wrunlock(void) {
     // Abrimos el torniquete para que los lectores puedan volver a entrar.
     sem_post(&S->writer_mutex);
 }
+
+
+void view_signal_update_ready(void) {
+    sem_post(&S->view_update_ready);
+}
+
+void view_wait_update_ready(void) {
+    sem_wait(&S->view_update_ready);
+}
+
+void view_signal_render_complete(void) {
+    sem_post(&S->view_render_complete);
+}
+
+void view_wait_render_complete(void) {
+    sem_wait(&S->view_render_complete);
+}

@@ -27,4 +27,13 @@ typedef struct
     sem_t player_turns[MAX_PLAYERS];
 } SyncMem;
 
+/* Sincronización Master <-> View */
+void view_signal_update_ready(void);    // master -> view
+void view_wait_update_ready(void);      // view   <- master
+
+void view_signal_render_complete(void); // view   -> master (opcional)
+void view_wait_render_complete(void);   // master <- view   (opcional)
+
+
+
 #endif
