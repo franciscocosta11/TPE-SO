@@ -1,4 +1,3 @@
-// view/main.c
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +15,11 @@
 #include "state_access.h"
 #include "sync.h"
 
+static void msleep(int ms) {
+    struct timespec ts = { ms/1000, (ms%1000)*1000000L };
+    nanosleep(&ts, NULL);
+}
+
 int main(void) {
     size_t GSIZE = 0;
     GameState *G = (GameState*)shm_attach_map(SHM_GAME_STATE, &GSIZE, PROT_READ);
@@ -27,7 +31,6 @@ int main(void) {
         return 1;
     }
 
-    /* Esperar frames del master */
     for (;;) {
         view_wait_update_ready();
 
@@ -48,7 +51,8 @@ int main(void) {
                     int r = cell_reward(v);
                     if (r < 0) {
                         r = 0;
-                    } else if (r > 9) {
+                    }
+                    if (r > 9) {
                         r = 9;
                     }
                     putchar('0' + (r % 10));
@@ -57,9 +61,9 @@ int main(void) {
             putchar('\n');
         }
         for (unsigned i = 0; i < n; ++i) {
-            printf("P%u pos=(%u,%u) score=%u valid=%u invalid=%u %s\n",
+            printf("P%u pos=(%u,%u) score=%u valid=%u invalid=%u timeouts=%u %s\n",
                    i, (unsigned)G->P[i].x, (unsigned)G->P[i].y,
-                   G->P[i].score, G->P[i].valids, G->P[i].invalids,
+                   G->P[i].score, G->P[i].valids, G->P[i].invalids, G->P[i].timeouts,
                    G->P[i].blocked ? "[BLOCKED]" : "");
         }
         bool over = G->game_over;
@@ -68,6 +72,7 @@ int main(void) {
         view_signal_render_complete();
         fflush(stdout);
         if (over) break;
+        msleep(50);
     }
 
     munmap(G, GSIZE);

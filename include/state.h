@@ -18,40 +18,35 @@ typedef enum {
     DIR_S=4, DIR_SW=5, DIR_W=6, DIR_NW=7
 } Dir;
 
-typedef struct Player { 
-    char name[NAME_LEN]; 
-    unsigned score, invalids, valids; 
-    unsigned short x,y; 
-    pid_t pid; 
-    bool blocked; 
+typedef struct Player {
+    char name[NAME_LEN];
+    unsigned score, invalids, valids;
+    unsigned timeouts;              /* NUEVO: cantidad de turnos vencidos por timeout */
+    unsigned short x,y;
+    pid_t pid;
+    bool blocked;
 } Player;
 
-typedef struct GameState { 
-    unsigned short w,h; 
-    unsigned n_players; 
-    Player P[MAX_PLAYERS]; 
-    bool game_over; 
-    int board[]; 
+typedef struct GameState {
+    unsigned short w,h;
+    unsigned n_players;
+    Player P[MAX_PLAYERS];
+    bool game_over;
+    int board[];
 } GameState;
 
-GameState* state_create(unsigned w, unsigned h);   // lo llama el master (crea/trunca shm)
-GameState* state_attach(void);   // lo llama la view/jugadores (solo adjunta)
-void state_destroy(GameState *g); // destruir (solo master al final)
+GameState* state_create(unsigned w, unsigned h);
+GameState* state_attach(void);
+void state_destroy(GameState *g);
 
 int  rules_validate(const GameState *g, int pid, Dir d, int *gain);
 void rules_apply(GameState *g, int pid, Dir d);
 
-
 void state_zero(GameState* g, unsigned w, unsigned h, unsigned n);
-
 size_t state_size(unsigned w, unsigned h);
-
 int idx(const GameState *g, unsigned x, unsigned y);
-
 void board_fill_rewards(GameState *g, unsigned seed);
-
 void players_place_grid(GameState *g);
-
 int player_can_move(const GameState *g, int pid);
 
 static inline int cell_reward(int v)         { return v > 0 ? v : 0; }
