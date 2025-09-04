@@ -1,7 +1,15 @@
 /master
 /view
 /player
+
+/reader_stress
+/writer_tick
+/state_header_sanity
+/state_zero_sanity
+/init_state
+
 *.o
 *.out
 *.log
+
 CuTest/bin/
