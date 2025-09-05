@@ -23,6 +23,9 @@ master: src/master/main.c $(OBJ_COMMON) $(OBJ_MASTER)
 view: src/view/main.c $(OBJ_COMMON)
 > $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
+view_ncurses: src/view/view_ncurses.c $(OBJ_COMMON)
+> $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lncurses
+
 player: src/player/main.c $(OBJ_COMMON)
 > $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 

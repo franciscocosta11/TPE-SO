@@ -23,8 +23,7 @@ static void msleep(int ms) {
 
 int main(void) {
     /* Adjuntar /game_state (tamaño por fstat) y /game_sync */
-    size_t GSIZE = 0;
-    GameState *G = (GameState*)shm_attach_map(SHM_GAME_STATE, &GSIZE, PROT_READ);
+    GameState *G = state_attach();
     if (!G) {
         fprintf(stderr, "shm_attach_map view failed\n");
         return 1;
@@ -32,7 +31,7 @@ int main(void) {
 
     if (sync_attach() != 0) {
         fprintf(stderr, "sync_attach failed\n");
-        munmap(G, GSIZE);
+        state_destroy(G);
         return 1;
     }
 
@@ -73,6 +72,6 @@ int main(void) {
         if (G->game_over) break;
     }
 
-    munmap(G, GSIZE);
+    state_destroy(G);
     return 0;
 }

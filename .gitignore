@@ -1,6 +1,7 @@
 /master
 /view
 /player
+/view_ncurses
 
 /reader_stress
 /writer_tick
