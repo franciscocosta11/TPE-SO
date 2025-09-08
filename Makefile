@@ -1,13 +1,15 @@
 .RECIPEPREFIX := >
 CC=gcc
 CFLAGS=-std=c11 -O2 -Wall -Wextra -Werror -pedantic -Iinclude
-LDFLAGS=-pthread -lrt
-
+LDFLAGS=-pthread 
+ifeq ($(UNAME_S),Linux)
+  LDFLAGS += -lrt
+endif
 # CuTest
 CUTEST_DIR=CuTest
 CUTEST_REQ=$(CUTEST_DIR)/AllTests.c $(CUTEST_DIR)/CuTestTest.c
 
-SRC_COMMON=src/common/util.c src/common/state.c src/common/rules.c src/common/sync.c src/common/shm.c src/common/state_access.c
+SRC_COMMON=src/common/log.c src/common/state.c src/common/rules.c src/common/sync.c src/common/shm.c src/common/state_access.c
 OBJ_COMMON=$(SRC_COMMON:.c=.o)
 
 # master-specific sources

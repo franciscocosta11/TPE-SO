@@ -27,4 +27,17 @@ typedef struct
     sem_t player_turns[MAX_PLAYERS];
 } SyncMem;
 
+/* Sincronización Master <-> View */
+void view_signal_update_ready(void);    // master -> view
+void view_wait_update_ready(void);      // view   <- master
+
+void view_signal_render_complete(void); // view   -> master (opcional)
+void view_wait_render_complete(void);   // master <- view   (opcional)
+
+void player_signal_turn(int i);                        // master -> habilita turno de jugador i
+void player_wait_turn(int i);                          // player i espera turno (bloqueante)
+int  player_wait_turn_timed(int i, int timeout_ms);    // player i espera con timeout (1 ok, 0 timeout, -1 error)
+
+
+
 #endif

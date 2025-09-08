@@ -5,7 +5,8 @@ typedef struct {
     int width;                  /* ancho del tablero */
     int height;                 /* alto del tablero */
     int delay;                  /* delay de poll en ms (select) */
-    int timeout;                /* (reservado) */
+    int timeout;                /* timeout de ronda en ms (0 = deshabilitado) */
+    int player_timeout_ms;      /* NUEVO: timeout individual por jugador en ms (0 = deshabilitado) */
     unsigned int seed;          /* semilla de RNG */
     char *view_path;            /* path al ejecutable view (opcional) */
     char *player_paths[9];      /* paths a ejecutables player */

@@ -7,6 +7,8 @@
 #include <string.h>
 #include <stdio.h>
 #include "shm.h"
+#include <time.h>
+#include <errno.h>
 
 static SyncMem *S = NULL;
 // static int sync_fd = -1;
@@ -109,4 +111,42 @@ void wrunlock(void) {
     sem_post(&S->state_mutex);
     // Abrimos el torniquete para que los lectores puedan volver a entrar.
     sem_post(&S->writer_mutex);
+}
+
+
+void view_signal_update_ready(void) {
+    sem_post(&S->view_update_ready);
+}
+
+void view_wait_update_ready(void) {
+    sem_wait(&S->view_update_ready);
+}
+
+void view_signal_render_complete(void) {
+    sem_post(&S->view_render_complete);
+}
+
+void view_wait_render_complete(void) {
+    sem_wait(&S->view_render_complete);
+}
+
+void player_signal_turn(int i) {
+    if (i >= 0 && i < MAX_PLAYERS) sem_post(&S->player_turns[i]);
+}
+
+void player_wait_turn(int i) {
+    if (i >= 0 && i < MAX_PLAYERS) sem_wait(&S->player_turns[i]);
+}
+
+int player_wait_turn_timed(int i, int timeout_ms) {
+    if (i < 0 || i >= MAX_PLAYERS) return -1;
+    struct timespec ts;
+    if (clock_gettime(CLOCK_REALTIME, &ts) == -1) return -1;
+    ts.tv_sec  += timeout_ms / 1000;
+    ts.tv_nsec += (timeout_ms % 1000) * 1000000L;
+    if (ts.tv_nsec >= 1000000000L) { ts.tv_sec += 1; ts.tv_nsec -= 1000000000L; }
+    int r = sem_timedwait(&S->player_turns[i], &ts);
+    if (r == 0) return 1;
+    if (errno == ETIMEDOUT) return 0;
+    return -1;
 }
