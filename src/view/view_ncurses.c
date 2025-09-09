@@ -281,6 +281,7 @@ int main(void)
     int frame = 0;
     while (frame < 2000)
     { // Más frames para una sesión más larga
+        view_wait_update_ready();
         rdlock();
 
         // Verificar si el usuario presionó 'q' para salir
@@ -331,9 +332,10 @@ int main(void)
         attroff(COLOR_PAIR(COLOR_UI + 0));
 
         rdunlock();
-
+        
         // Actualizar pantalla
         refresh();
+        view_signal_render_complete();
 
         // Control de FPS (~10 fps)
         msleep(100);

@@ -299,7 +299,7 @@ int main(int argc, char *argv[]) {
 
         /* view: fin de ronda */
         view_signal_update_ready();
-        // view_wait_render_complete();
+        view_wait_render_complete();
 
         /* preparar próxima ronda */
         memset(took_turn, 0, sizeof(took_turn));
