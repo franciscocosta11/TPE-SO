@@ -19,8 +19,8 @@
 #include "sync.h"
 #include "shm.h"
 #include "master_logic.h"
+#include "rules.h"
 
-#define MAXP 9
 
 /* --- señales --- */
 static volatile sig_atomic_t stop_flag = 0;
@@ -38,7 +38,7 @@ static long ms_since(const struct timespec *t0) {
 static void print_ranking(const GameState *G) {
     /* copiar índices [0..n-1] y ordenar por score desc */
     unsigned n = G->n_players;
-    unsigned idxs[MAXP];
+    unsigned idxs[MAX_PLAYERS];
     for (unsigned i = 0; i < n; ++i) idxs[i] = i;
 
     /* bubble simple (n<=9) */
@@ -106,7 +106,7 @@ int main(int argc, char *argv[]) {
     unsigned H = (unsigned)cfg.height;
     unsigned N = (unsigned)cfg.player_count;
     if (N == 0) { fprintf(stderr, "no players specified\n"); return 1; }
-    if (N > MAXP) N = MAXP;
+    if (N > MAX_PLAYERS) N = MAX_PLAYERS;
 
     const char *default_player_path = "./player";
 
@@ -125,7 +125,7 @@ int main(int argc, char *argv[]) {
     state_write_end();
 
     /* bloqueados iniciales */
-    int blocked[MAXP] = {0};
+    int blocked[MAX_PLAYERS] = {0};
     state_write_begin();
     for (unsigned i = 0; i < N; ++i) {
         blocked[i] = !player_can_move(G, (int)i);
@@ -140,10 +140,10 @@ int main(int argc, char *argv[]) {
     }
 
     /* spawn players */
-    int   rfd[MAXP];
-    pid_t pids[MAXP];
-    int   alive[MAXP];
-    int   took_turn[MAXP];
+    int   rfd[MAX_PLAYERS];
+    pid_t pids[MAX_PLAYERS];
+    int   alive[MAX_PLAYERS];
+    int   took_turn[MAX_PLAYERS];
 
     for (unsigned i = 0; i < N; ++i) {
         int pf[2];

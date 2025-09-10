@@ -1,4 +1,4 @@
-#include "state.h"
+#include "rules.h"
 
 static void dir_delta(Dir d, int *dx, int *dy) {
     static const int DX[8] = { 0, 1, 1, 1, 0,-1,-1,-1 };
@@ -7,37 +7,53 @@ static void dir_delta(Dir d, int *dx, int *dy) {
 }
 
 int rules_validate(const GameState *g, int pid, Dir d, int *gain) {
+    /* entradas válidas */
+    if (!g) return 0;
     if (pid < 0 || (unsigned)pid >= g->n_players) return 0;
+    if ((int)d < 0 || (int)d > 7) return 0; /* validar dirección */
+
     int dx, dy; dir_delta(d, &dx, &dy);
 
     int x = (int)g->P[pid].x + dx;
     int y = (int)g->P[pid].y + dy;
 
-    if (x < 0 || y < 0 || x >= g->w || y >= g->h) return 0;
+    if (x < 0 || y < 0 || x >= (int)g->w || y >= (int)g->h) return 0;
 
     int v = g->board[idx(g, (unsigned)x, (unsigned)y)];
+
+    /* comprobar owner primero */
     if (cell_owner(v) != -1) return 0;  // ya capturada por alguien
 
-    if (gain) *gain = cell_reward(v);   // 1..9
+    /* comprobar reward en rango esperado (0..9) */
+    int r = cell_reward(v);
+    if (r < 0 || r > 9) return 0; /* valor corrupto en el tablero */
+
+    if (gain) *gain = r;   /* 0..9 */
     return 1;
 }
 
 void rules_apply(GameState *g, int pid, Dir d) {
+    /* validar nuevamente para evitar aplicar movimientos corruptos */
+    if (!g) return;
+    int gain = 0;
+    if (!rules_validate(g, pid, d, &gain)) return;
+
     int dx, dy; dir_delta(d, &dx, &dy);
 
     int nx = (int)g->P[pid].x + dx;
     int ny = (int)g->P[pid].y + dy;
+    /* re-leer v/r ya validados por rules_validate */
     int v  = g->board[idx(g, (unsigned)nx, (unsigned)ny)];
     int r  = cell_reward(v);
 
-    // mover
+    /* mover */
     g->P[pid].x = (unsigned short)nx;
     g->P[pid].y = (unsigned short)ny;
 
-    // capturar la celda
+    /* capturar la celda */
     g->board[idx(g, (unsigned)nx, (unsigned)ny)] = make_captured(pid);
 
-    // puntaje y contadores
+    /* puntaje y contadores */
     g->P[pid].score  += (unsigned)r;
     g->P[pid].valids += 1;
 }

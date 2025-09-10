@@ -1,6 +1,10 @@
 #ifndef MASTER_LOGIC_H
 #define MASTER_LOGIC_H
 
+
+/**
+ * @brief Configuración del master (parámetros de ejecución).
+ */
 typedef struct {
     int width;                  /* ancho del tablero */
     int height;                 /* alto del tablero */
@@ -13,7 +17,13 @@ typedef struct {
     int player_count;           /* cantidad de players */
 } MasterConfig;
 
-/* Parsea argv y completa config con defaults + overrides. Devuelve 0 si ok. */
+/**
+ * @brief Parsea argv y completa config con defaults + overrides.
+ * @param argc Count de argumentos.
+ * @param argv Vector de argumentos.
+ * @param config Puntero a MasterConfig que será rellenado.
+ * @return 0 si OK, -1 en caso de error (mensaje en stderr).
+ */
 int parse_args(int argc, char *argv[], MasterConfig *config);
 
-#endif /* MASTER_LOGIC_H */
+#endif // MASTER_LOGIC_H 

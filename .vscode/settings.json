@@ -4,6 +4,7 @@
         "sync.h": "c",
         "state.h": "c",
         "shm.h": "c",
-        "unistd.h": "c"
+        "unistd.h": "c",
+        "random": "c"
     }
 }
