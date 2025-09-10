@@ -331,31 +331,23 @@ int main(void)
         mvprintw(max_y - 1, 0, "Frame: %d | Press 'q' to quit", frame);
         attroff(COLOR_PAIR(COLOR_UI + 0));
 
+        int game_over_now = G->game_over ? 1 : 0;
         rdunlock();
-        
+
         // Actualizar pantalla
         refresh();
         view_signal_render_complete();
 
+        if (game_over_now) {
+            // Salir inmediatamente: evitamos quedarse "tildado" en pantalla final
+            break;
+        }
+
         // Control de FPS (~10 fps)
         msleep(100);
         frame++;
-
-        // Salir si el juego terminó
-        if (G->game_over)
-        {
-            // Mostrar mensaje final por unos segundos más
-            for (int i = 0; i < 30; i++)
-            {
-                int ch = getch();
-                if (ch == 'q' || ch == 'Q')
-                    break;
-                msleep(100);
-            }
-            break;
-        }
     }
 
-    cleanup_and_exit(0);
+    cleanup_and_exit();
     return 0;
 }

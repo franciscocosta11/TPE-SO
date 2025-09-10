@@ -175,10 +175,17 @@ int main(int argc, char *argv[]) {
         for (unsigned i = 0; i < N; ++i) if (alive[i]) { any_alive = 1; break; }
         if (!any_alive) break;
 
-        /* all blocked? */
-        int all_blocked = 1;
-        for (unsigned i = 0; i < N; ++i) if (alive[i] && !blocked[i]) { all_blocked = 0; break; }
-        if (all_blocked) { printf("all players blocked\n"); break; }
+        /* Re-sincronizar array local blocked[] con el estado compartido para evitar drift */
+        state_read_begin();
+        for (unsigned i = 0; i < N; ++i) {
+            if (alive[i]) blocked[i] = G->P[i].blocked;
+        }
+        state_read_end();
+
+    /* all blocked? (única condición de bloqueo colectivo válida) */
+    int all_blocked = 1;
+    for (unsigned i = 0; i < N; ++i) if (alive[i] && !blocked[i]) { all_blocked = 0; break; }
+    if (all_blocked) { printf("termination: all alive players blocked\n"); break; }
 
         /* tiempos de control */
         struct timespec t_round0;
@@ -186,8 +193,9 @@ int main(int argc, char *argv[]) {
         int round_timeout_ms   = (cfg.timeout > 0) ? cfg.timeout : 0;
         int player_timeout_ms  = (cfg.player_timeout_ms > 0) ? cfg.player_timeout_ms : 0;
 
-        /* loop interno de la ronda */
-        while (1) {
+    /* loop interno de la ronda */
+    int progress_this_round = 0; /* 1 si hubo movimiento / EOF / timeout aplicado */
+    while (1) {
             /* fin por completitud */
             int round_done = 1;
             for (unsigned i = 0; i < N; ++i)
@@ -203,6 +211,7 @@ int main(int argc, char *argv[]) {
                         if (alive[i] && !blocked[i] && !took_turn[i]) {
                             took_turn[i] = 1;
                             G->P[i].timeouts += 1; /* cuenta timeout individual */
+                            progress_this_round = 1;
                             /* no modificamos blocked: podrá jugar próxima ronda si tiene jugadas */
                         }
                     }
@@ -219,6 +228,7 @@ int main(int argc, char *argv[]) {
                     for (unsigned i = 0; i < N; ++i) {
                         if (alive[i] && !blocked[i] && !took_turn[i]) {
                             took_turn[i] = 1;
+                            progress_this_round = 1;
                             /* Podríamos también sumar timeout aquí si querés; lo dejamos solo para per-jugador */
                         }
                     }
@@ -259,31 +269,40 @@ int main(int argc, char *argv[]) {
                     int gain = 0;
 
                     state_write_begin();
-                    int ok = (mv < 8) && rules_validate(G, (int)i, (Dir)mv, &gain);
-                    if (ok) {
-                        rules_apply(G, (int)i, (Dir)mv);
-                        printf("[round %d] player %u VALID dir=%u gain=%d score=%u pos=(%u,%u)\n",
-                               rounds, i, (unsigned)mv, gain,
-                               G->P[i].score, (unsigned)G->P[i].x, (unsigned)G->P[i].y);
+                    if (mv == 0xFF) { /* PASS sentinel: jugador sin movimientos disponibles */
+                        blocked[i] = 1;
+                        G->P[i].blocked = 1;
+                        printf("[round %d] player %u PASS -> BLOCKED\n", rounds, i);
                     } else {
-                        G->P[i].invalids++;
-                        printf("[round %d] player %u INVALID dir=%u (invalids=%u)\n",
-                               rounds, i, (unsigned)mv, G->P[i].invalids);
-                    }
+                        int ok = (mv < 8) && rules_validate(G, (int)i, (Dir)mv, &gain);
+                        if (ok) {
+                            rules_apply(G, (int)i, (Dir)mv);
+                            printf("[round %d] player %u VALID dir=%u gain=%d score=%u pos=(%u,%u)\n",
+                                   rounds, i, (unsigned)mv, gain,
+                                   G->P[i].score, (unsigned)G->P[i].x, (unsigned)G->P[i].y);
+                        } else {
+                            G->P[i].invalids++;
+                            printf("[round %d] player %u INVALID dir=%u (invalids=%u)\n",
+                                   rounds, i, (unsigned)mv, G->P[i].invalids);
+                        }
 
-                    blocked[i] = !player_can_move(G, (int)i);
-                    G->P[i].blocked = blocked[i];
-                    if (blocked[i]) printf("player %u BLOCKED (no moves)\n", i);
+                        blocked[i] = !player_can_move(G, (int)i);
+                        G->P[i].blocked = blocked[i];
+                        if (blocked[i]) printf("player %u BLOCKED (no moves)\n", i);
+                    }
                     state_write_end();
+                    progress_this_round = 1;
                 } else if (n == 0) {
                     alive[i] = 0;
                     close(rfd[i]);
                     printf("player %u EOF\n", i);
+                    progress_this_round = 1;
                 } else {
                     if (errno != EAGAIN && errno != EWOULDBLOCK) {
                         perror("read");
                         alive[i] = 0;
                         close(rfd[i]);
+                        progress_this_round = 1;
                     }
                 }
             }
@@ -295,6 +314,14 @@ int main(int argc, char *argv[]) {
                     (void)waitpid(pids[i], &status, WNOHANG);
                 }
             }
+            /* watchdog de ronda: si pasan 5000ms sin progreso forzamos cierre */
+            if (!progress_this_round) {
+                long elapsed_ms2 = ms_since(&t_round0);
+                if (elapsed_ms2 > 5000) {
+                    fprintf(stderr, "watchdog: forcing end of round after %ld ms without progress\n", elapsed_ms2);
+                    break;
+                }
+            }
         } /* fin loop interno */
 
         /* view: fin de ronda */
@@ -304,9 +331,9 @@ int main(int argc, char *argv[]) {
         /* preparar próxima ronda */
         memset(took_turn, 0, sizeof(took_turn));
 
-        int all_blocked2 = 1;
-        for (unsigned i = 0; i < N; ++i) if (alive[i] && !blocked[i]) { all_blocked2 = 0; break; }
-        if (all_blocked2) { printf("all players blocked\n"); break; }
+    int all_blocked2 = 1;
+    for (unsigned i = 0; i < N; ++i) if (alive[i] && !blocked[i]) { all_blocked2 = 0; break; }
+    if (all_blocked2) { printf("termination: all alive players blocked (post-round)\n"); break; }
 
         rounds++;
         if (rounds >= MAX_ROUNDS) { printf("max rounds reached\n"); break; }

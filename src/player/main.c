@@ -83,9 +83,11 @@ nanosleep(&ts,NULL);
             ssize_t wres = write(1, &best_dir, 1);
             (void)wres; // Suppress unused-result warning
         } else {
-            /* No tengo jugada legal: dejo pasar el turno (master me marcará bloqueado) */
-            struct timespec ts = { .tv_sec = 0, .tv_nsec = 50 * 1000 * 1000 }; // 50 ms
-nanosleep(&ts,NULL);
+            /* No tengo jugada legal: envío PASS sentinel 0xFF y termino */
+            uint8_t pass = 0xFF;
+            ssize_t wpass = write(1, &pass, 1);
+            (void)wpass;
+            break;
         }
     }
 
