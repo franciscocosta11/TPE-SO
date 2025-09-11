@@ -67,7 +67,17 @@ static int spawn_player(const char *path, int pipefd[2]) {
     pid_t pid = fork();
     if (pid < 0) { perror("fork"); exit(1); }
     if (pid == 0) {
+        /* Mantener stdout hacia el pipe (master lee movimientos). */
         if (dup2(pipefd[1], 1) == -1) { perror("dup2"); _exit(1); }
+        /* Redirigir stderr del player a un log por PID para diagnóstico. */
+        char logpath[256];
+        pid_t mypid = getpid();
+        snprintf(logpath, sizeof(logpath), "./logs/player-%d.log", (int)mypid);
+        int lf = open(logpath, O_CREAT|O_WRONLY|O_APPEND, 0644);
+        if (lf != -1) {
+            (void)dup2(lf, 2);
+            close(lf);
+        }
         close(pipefd[0]);
         close(pipefd[1]);
         execl(path, path, (char*)NULL);
@@ -81,6 +91,17 @@ static pid_t spawn_view(const char *path) {
     pid_t pid = fork();
     if (pid < 0) { perror("fork"); exit(1); }
     if (pid == 0) {
+        /* Redirigir stdout y stderr de la view a un log por PID. */
+        char logpath[256];
+        pid_t mypid = getpid();
+        snprintf(logpath, sizeof(logpath), "./logs/view-%d.log", (int)mypid);
+        int lf = open(logpath, O_CREAT|O_WRONLY|O_APPEND, 0644);
+        if (lf != -1) {
+            /* No redirigimos stdout: permitimos que la view use el terminal
+             * para ncurses. Solo redirigimos stderr al log por si hay errores. */
+            (void)dup2(lf, 2);
+            close(lf);
+        }
         execl(path, path, (char*)NULL);
         perror("execl"); _exit(127);
     }
@@ -88,6 +109,9 @@ static pid_t spawn_view(const char *path) {
 }
 
 int main(int argc, char *argv[]) {
+    /* Asegurar existencia de carpeta para logs de procesos */
+    (void)mkdir("./logs", 0755);
+
     /* señales */
     struct sigaction sa = {0};
     sa.sa_handler = on_signal;
@@ -144,6 +168,7 @@ int main(int argc, char *argv[]) {
     pid_t pids[MAX_PLAYERS];
     int   alive[MAX_PLAYERS];
     int   took_turn[MAX_PLAYERS];
+    int   plogfd[MAX_PLAYERS];
 
     for (unsigned i = 0; i < N; ++i) {
         int pf[2];
@@ -153,6 +178,17 @@ int main(int argc, char *argv[]) {
         rfd[i] = pf[0];
         alive[i] = 1;
         took_turn[i] = 0;
+    /* abrir descriptor para que el master pueda anotar los bytes recibidos en el log del player */
+    char logpath[256];
+    snprintf(logpath, sizeof(logpath), "./logs/player-%d.log", (int)pids[i]);
+        int lf = open(logpath, O_CREAT|O_WRONLY|O_APPEND, 0644);
+        if (lf == -1) {
+            fprintf(stderr, "master: open('%s') failed: %s\n", logpath, strerror(errno));
+            plogfd[i] = -1;
+        } else {
+            plogfd[i] = lf;
+            dprintf(plogfd[i], "MASTER: opened log for pid=%d\n", (int)pids[i]);
+        }
     }
 
     /* PIDs en el estado */
@@ -268,6 +304,12 @@ int main(int argc, char *argv[]) {
                     took_turn[i] = 1;
                     int gain = 0;
 
+                    /* registrar movimiento bruto en el log del player para diagnóstico */
+                    if (plogfd[i] != -1) {
+                        dprintf(plogfd[i], "mv=%u\n", (unsigned)mv);
+                        /* flush implícito por dprintf */
+                    }
+
                     state_write_begin();
                     if (mv == 0xFF) { /* PASS sentinel: jugador sin movimientos disponibles */
                         blocked[i] = 1;
@@ -295,6 +337,7 @@ int main(int argc, char *argv[]) {
                 } else if (n == 0) {
                     alive[i] = 0;
                     close(rfd[i]);
+                    if (plogfd[i] != -1) dprintf(plogfd[i], "EOF\n");
                     printf("player %u EOF\n", i);
                     progress_this_round = 1;
                 } else {
@@ -302,6 +345,7 @@ int main(int argc, char *argv[]) {
                         perror("read");
                         alive[i] = 0;
                         close(rfd[i]);
+                        if (plogfd[i] != -1) dprintf(plogfd[i], "ERROR read errno=%d\n", errno);
                         progress_this_round = 1;
                     }
                 }
@@ -352,6 +396,9 @@ int main(int argc, char *argv[]) {
     for (unsigned i = 0; i < N; ++i) if (pids[i] > 0) kill(pids[i], SIGTERM);
     for (unsigned i = 0; i < N; ++i) if (pids[i] > 0) (void)waitpid(pids[i], NULL, 0);
     if (view_pid > 0) { kill(view_pid, SIGTERM); (void)waitpid(view_pid, NULL, 0); }
+
+    /* cerrar logs abiertos por el master */
+    for (unsigned i = 0; i < N; ++i) if (plogfd[i] != -1) close(plogfd[i]);
 
     printf("done after %d rounds\n", rounds);
 

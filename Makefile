@@ -59,3 +59,33 @@ clean:
 > $(MAKE) -C $(CUTEST_DIR) clean
 
 .PHONY: all clean cutest test stress
+
+# Valgrind targets
+VALGRIND ?= valgrind
+VGFLAGS  := --tool=memcheck --leak-check=full --show-leak-kinds=all --track-origins=yes --errors-for-leak-kinds=all
+VG_TIMEOUT ?= 60s
+
+.PHONY: valgrind_master valgrind_tests
+
+valgrind_master: master player view_ncurses
+> @echo "Preparing ./logs directory and running master under valgrind (per-process logs: ./logs/valgrind.<pid>.log) ..."
+> mkdir -p ./logs
+> timeout $(VG_TIMEOUT) $(VALGRIND) $(VGFLAGS) --trace-children=yes --log-file=./logs/valgrind.%p.log -- ./master -v ./view_ncurses -p ./player ./player || true
+> @echo "Done. Check ./logs/ for valgrind.*.log"
+
+valgrind_tests: reader_stress writer_tick
+> @echo "Running writer_tick under valgrind (log: /tmp/valgrind.writer_tick.log) ..."
+> timeout 20s $(VALGRIND) $(VGFLAGS) --log-file=/tmp/valgrind.writer_tick.log -- ./writer_tick || true
+> @echo "Running reader_stress under valgrind (log: /tmp/valgrind.reader_stress.log) ..."
+> timeout 20s $(VALGRIND) $(VGFLAGS) --log-file=/tmp/valgrind.reader_stress.log -- ./reader_stress || true
+> @echo "Done. Check /tmp/valgrind.*.log"
+
+.PHONY: valgrind_view
+
+valgrind_view: view_ncurses init_state
+> @echo "Running init_state to create shared memory and semaphores"
+> ./init_state
+> @echo "Running view_ncurses under valgrind with ncurses suppressions -> ./logs/valgrind_view.log"
+> mkdir -p ./logs
+> $(VALGRIND) $(VGFLAGS) --suppressions=./logs/valgrind_ncurses.supp --log-file=./logs/valgrind_view.log ./view_ncurses || true
+> @echo "Done. See ./logs/valgrind_view.log"

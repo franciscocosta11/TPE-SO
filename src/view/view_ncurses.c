@@ -12,6 +12,8 @@
 #include <string.h>
 #include <ncurses.h>
 #include <signal.h>
+#include <stdbool.h>
+
 #include "shm.h"
 #include "state.h"
 #include "state_access.h"
@@ -24,138 +26,177 @@
 #define CELL_HEIGHT 3
 #define CELL_WIDTH 5
 
-// Variables globales para cleanup
+// Globals para cleanup
 static GameState *global_state = NULL;
 static int ncurses_initialized = 0;
+static SCREEN *global_scr = NULL;
+static volatile sig_atomic_t g_should_exit = 0;
+static int g_has_colors = 0;
 
-static void cleanup_and_exit()
+static void request_exit(int sig) {
+    (void)sig;
+    g_should_exit = 1; // solo marcar; el cleanup real se hace en el main loop
+}
+
+static void install_signal_handlers(void) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = request_exit;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(SIGINT,  &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
+}
+
+static void cleanup_and_exit(int code)
 {
     if (ncurses_initialized)
     {
+        // Restaurar terminal y liberar estructuras internas
+        // endwin() primero, luego delscreen() si se usó newterm()
         endwin();
+        if (global_scr) {
+            delscreen(global_scr);
+            global_scr = NULL;
+        }
+        ncurses_initialized = 0;
     }
     if (global_state)
     {
         state_destroy(global_state);
+        global_state = NULL;
     }
-    exit(0);
+    // Detach de primitivos de sync si los usamos
+    _exit(code);
 }
 
 static void msleep(int ms)
 {
-    struct timespec ts = {ms / 1000, (ms % 1000) * 1000000L};
-    nanosleep(&ts, NULL);
+    struct timespec ts;
+    ts.tv_sec = ms / 1000;
+    ts.tv_nsec = (long)(ms % 1000) * 1000000L;
+
+    while (nanosleep(&ts, &ts) == -1 && errno == EINTR) {
+        if (g_should_exit) break;
+        continue;
+    }
 }
 
 static void init_colors(void)
 {
-    if (has_colors())
+    g_has_colors = has_colors();
+    if (g_has_colors)
     {
         start_color();
+        use_default_colors();
 
-        // Colores para jugadores (fondo coloreado, texto negro)
-        init_pair(COLOR_PLAYER_BASE + 0, COLOR_BLACK, COLOR_RED);     // Jugador 0
-        init_pair(COLOR_PLAYER_BASE + 1, COLOR_BLACK, COLOR_GREEN);   // Jugador 1
-        init_pair(COLOR_PLAYER_BASE + 2, COLOR_BLACK, COLOR_YELLOW);  // Jugador 2
-        init_pair(COLOR_PLAYER_BASE + 3, COLOR_BLACK, COLOR_BLUE);    // Jugador 3
-        init_pair(COLOR_PLAYER_BASE + 4, COLOR_BLACK, COLOR_MAGENTA); // Jugador 4
-        init_pair(COLOR_PLAYER_BASE + 5, COLOR_BLACK, COLOR_CYAN);    // Jugador 5
-        init_pair(COLOR_PLAYER_BASE + 6, COLOR_WHITE, COLOR_RED);     // Jugador 6
-        init_pair(COLOR_PLAYER_BASE + 7, COLOR_WHITE, COLOR_GREEN);   // Jugador 7
+        // Players
+        init_pair(COLOR_PLAYER_BASE + 0, COLOR_BLACK,   COLOR_RED);
+        init_pair(COLOR_PLAYER_BASE + 1, COLOR_BLACK,   COLOR_GREEN);
+        init_pair(COLOR_PLAYER_BASE + 2, COLOR_BLACK,   COLOR_YELLOW);
+        init_pair(COLOR_PLAYER_BASE + 3, COLOR_BLACK,   COLOR_BLUE);
+        init_pair(COLOR_PLAYER_BASE + 4, COLOR_BLACK,   COLOR_MAGENTA);
+        init_pair(COLOR_PLAYER_BASE + 5, COLOR_BLACK,   COLOR_CYAN);
+        init_pair(COLOR_PLAYER_BASE + 6, COLOR_WHITE,   COLOR_RED);
+        init_pair(COLOR_PLAYER_BASE + 7, COLOR_WHITE,   COLOR_GREEN);
 
-        // Colores para UI
-        init_pair(COLOR_UI + 0, COLOR_WHITE, COLOR_BLACK);  // Normal
-        init_pair(COLOR_UI + 1, COLOR_YELLOW, COLOR_BLACK); // Destacado
-        init_pair(COLOR_UI + 2, COLOR_RED, COLOR_BLACK);    // Error/Blocked
-        init_pair(COLOR_UI + 3, COLOR_GREEN, COLOR_BLACK);  // Éxito
+        // UI
+        init_pair(COLOR_UI + 0, COLOR_WHITE,  COLOR_BLACK);
+        init_pair(COLOR_UI + 1, COLOR_YELLOW, COLOR_BLACK);
+        init_pair(COLOR_UI + 2, COLOR_RED,    COLOR_BLACK);
+        init_pair(COLOR_UI + 3, COLOR_GREEN,  COLOR_BLACK);
+
+        // Recompensas
+        init_pair(COLOR_REWARD + 0, COLOR_WHITE, COLOR_BLACK);
     }
+}
+
+static void safe_attron(int pair, bool bold, bool blink) {
+    if (!g_has_colors) return;
+    attron(COLOR_PAIR(pair));
+    if (bold)  attron(A_BOLD);
+    if (blink) attron(A_BLINK);
+}
+static void safe_attroff(int pair, bool bold, bool blink) {
+    if (!g_has_colors) return;
+    attroff(COLOR_PAIR(pair));
+    if (bold)  attroff(A_BOLD);
+    if (blink) attroff(A_BLINK);
 }
 
 static void draw_board(GameState *G, int start_y, int start_x)
 {
     unsigned w = G->w, h = G->h;
 
-    attron(COLOR_PAIR(COLOR_UI + 1) | A_BOLD);
+    safe_attron(COLOR_UI + 1, true, false);
     mvprintw(start_y - 2, start_x, "Board (%ux%u)", w, h);
-    attroff(COLOR_PAIR(COLOR_UI + 1) | A_BOLD);
+    safe_attroff(COLOR_UI + 1, true, false);
 
     for (unsigned y = 0; y < h; y++)
     {
         for (unsigned x = 0; x < w; x++)
         {
-            int cell_start_y = start_y + (y * (CELL_HEIGHT - 1));
-            int cell_start_x = start_x + (x * (CELL_WIDTH - 1));
+            int cell_start_y = start_y + (int)(y * (CELL_HEIGHT - 1));
+            int cell_start_x = start_x + (int)(x * (CELL_WIDTH  - 1));
 
             int v = G->board[idx(G, x, y)];
             int owner = cell_owner(v);
 
-            int color_pair_id;
+            int color_pair_id = COLOR_REWARD + 0;
             char content_char;
-            bool is_owned = false; // Para saber si pintar el fondo
+            bool is_owned = false;
 
             if (owner >= 0)
             {
                 is_owned = true;
                 color_pair_id = COLOR_PLAYER_BASE + (owner % 8);
-                content_char = 'A' + owner;
+                content_char  = (char)('A' + owner);
             }
             else
             {
                 int r = cell_reward(v);
-                if (r < 0)
-                    r = 0;
-                if (r > 9)
-                    r = 9;
+                if (r < 0) r = 0;
+                if (r > 9) r = 9;
 
-                content_char = '0' + r;
-                color_pair_id = COLOR_REWARD + 0; // Color por defecto (blanco sobre negro)
+                content_char = (char)('0' + r);
             }
 
-            attron(COLOR_PAIR(color_pair_id));
-
-            // --- CAMBIO 3: Pintar fondo solo si la celda está ocupada ---
-            if (is_owned)
+            // Relleno interno
+            for (int inner_y = 1; inner_y < CELL_HEIGHT - 1; ++inner_y)
             {
-                for (int inner_y = 1; inner_y < CELL_HEIGHT - 1; ++inner_y)
+                for (int inner_x = 1; inner_x < CELL_WIDTH - 1; ++inner_x)
                 {
-                    for (int inner_x = 1; inner_x < CELL_WIDTH - 1; ++inner_x)
-                    {
-                        mvaddch(cell_start_y + inner_y, cell_start_x + inner_x, ' ');
-                    }
+                    safe_attron(color_pair_id, false, false);
+                    mvaddch(cell_start_y + inner_y, cell_start_x + inner_x, ' ');
+                    safe_attroff(color_pair_id, false, false);
                 }
             }
 
-            // Centrar el contenido
-            mvaddch(cell_start_y + (CELL_HEIGHT / 2), cell_start_x + (CELL_WIDTH / 2), content_char);
+            // Contenido centrado
+            if (is_owned) safe_attron(color_pair_id, true, false);
+            else          safe_attron(color_pair_id, false, false);
 
-            // Dibujar bordes (con caracteres especiales para uniones)
-            // Esquinas
+            mvaddch(cell_start_y + (CELL_HEIGHT / 2),
+                    cell_start_x + (CELL_WIDTH  / 2), content_char);
+            safe_attroff(color_pair_id, true, false);
+
+            // Bordes
+            safe_attron(COLOR_UI + 0, false, false);
             mvaddch(cell_start_y, cell_start_x, ACS_ULCORNER);
-            mvaddch(cell_start_y, cell_start_x + CELL_WIDTH - 1, x == w - 1 ? ACS_URCORNER : ACS_TTEE);
-            mvaddch(cell_start_y + CELL_HEIGHT - 1, cell_start_x, y == h - 1 ? ACS_LLCORNER : ACS_LTEE);
-            mvaddch(cell_start_y + CELL_HEIGHT - 1, cell_start_x + CELL_WIDTH - 1, (x == w - 1 && y == h - 1) ? ACS_LRCORNER : ACS_PLUS);
+            mvaddch(cell_start_y, cell_start_x + CELL_WIDTH - 1, (x == w - 1) ? ACS_URCORNER : ACS_TTEE);
+            mvaddch(cell_start_y + CELL_HEIGHT - 1, cell_start_x, (y == h - 1) ? ACS_LLCORNER : ACS_LTEE);
+            mvaddch(cell_start_y + CELL_HEIGHT - 1, cell_start_x + CELL_WIDTH - 1,
+                    (x == w - 1 && y == h - 1) ? ACS_LRCORNER : ACS_PLUS);
 
-            // Líneas horizontales
-            for (int i = 1; i < CELL_WIDTH - 1; ++i)
-            {
+            for (int i = 1; i < CELL_WIDTH - 1; ++i) {
                 mvaddch(cell_start_y, cell_start_x + i, ACS_HLINE);
-                if (y < h - 1)
-                { // Solo dibuja líneas inferiores si no es la última fila
-                    mvaddch(cell_start_y + CELL_HEIGHT - 1, cell_start_x + i, ACS_HLINE);
-                }
+                if (y < h - 1) mvaddch(cell_start_y + CELL_HEIGHT - 1, cell_start_x + i, ACS_HLINE);
             }
-
-            // Líneas verticales
-            for (int i = 1; i < CELL_HEIGHT - 1; ++i)
-            {
+            for (int i = 1; i < CELL_HEIGHT - 1; ++i) {
                 mvaddch(cell_start_y + i, cell_start_x, ACS_VLINE);
-                if (x < w - 1)
-                { // Solo dibuja líneas derechas si no es la última columna
-                    mvaddch(cell_start_y + i, cell_start_x + CELL_WIDTH - 1, ACS_VLINE);
-                }
+                if (x < w - 1) mvaddch(cell_start_y + i, cell_start_x + CELL_WIDTH - 1, ACS_VLINE);
             }
-
-            attroff(COLOR_PAIR(color_pair_id));
+            safe_attroff(COLOR_UI + 0, false, false);
         }
     }
 }
@@ -164,91 +205,85 @@ static void draw_players_info(GameState *G, int start_y, int start_x)
 {
     unsigned n = G->n_players;
 
-    attron(COLOR_PAIR(COLOR_UI + 1) | A_BOLD);
+    safe_attron(COLOR_UI + 1, true, false);
     mvprintw(start_y, start_x, "Players (%u):", n);
-    attroff(COLOR_PAIR(COLOR_UI + 1) | A_BOLD);
+    safe_attroff(COLOR_UI + 1, true, false);
 
     for (unsigned i = 0; i < n; i++)
     {
-        int y = start_y + 2 + i;
-        int color_pair = COLOR_PLAYER_BASE + (i % 8);
+        int y = start_y + 2 + (int)i;
+        int color_pair = COLOR_PLAYER_BASE + (int)(i % 8);
 
-        // Mostrar letra del jugador con su color
-        attron(COLOR_PAIR(color_pair) | A_BOLD);
-        mvaddch(y, start_x, 'A' + i);
-        attroff(COLOR_PAIR(color_pair) | A_BOLD);
+        // Letra del jugador
+        safe_attron(color_pair, true, false);
+        mvaddch(y, start_x, (char)('A' + i));
+        safe_attroff(color_pair, true, false);
 
-        // Información del jugador
-        attron(COLOR_PAIR(COLOR_UI + 0));
+        // Info básica
+        safe_attron(COLOR_UI + 0, false, false);
         mvprintw(y, start_x + 2, "pos=(%u,%u) score=%u",
                  G->P[i].x, G->P[i].y, G->P[i].score);
-        attroff(COLOR_PAIR(COLOR_UI + 0));
+        safe_attroff(COLOR_UI + 0, false, false);
 
-        // Estadísticas de movimientos
-        attron(COLOR_PAIR(COLOR_UI + 3));
+        // Stats
+        safe_attron(COLOR_UI + 3, false, false);
         mvprintw(y, start_x + 25, "valid=%u", G->P[i].valids);
-        attroff(COLOR_PAIR(COLOR_UI + 3));
+        safe_attroff(COLOR_UI + 3, false, false);
 
-        attron(COLOR_PAIR(COLOR_UI + 2));
+        safe_attron(COLOR_UI + 2, false, false);
         mvprintw(y, start_x + 35, "invalid=%u", G->P[i].invalids);
-        attroff(COLOR_PAIR(COLOR_UI + 2));
+        safe_attroff(COLOR_UI + 2, false, false);
 
-        // Estado bloqueado
         if (G->P[i].blocked)
         {
-            attron(COLOR_PAIR(COLOR_UI + 2) | A_BOLD | A_BLINK);
+            safe_attron(COLOR_UI + 2, true, true);
             mvprintw(y, start_x + 48, "[BLOCKED]");
-            attroff(COLOR_PAIR(COLOR_UI + 2) | A_BOLD | A_BLINK);
+            safe_attroff(COLOR_UI + 2, true, true);
         }
     }
 }
 
 static void draw_game_info(GameState *G, int start_y, int start_x)
 {
-    // Información general del juego
-    attron(COLOR_PAIR(COLOR_UI + 1) | A_BOLD);
+    safe_attron(COLOR_UI + 1, true, false);
     mvprintw(start_y, start_x, "Game Status");
-    attroff(COLOR_PAIR(COLOR_UI + 1) | A_BOLD);
+    safe_attroff(COLOR_UI + 1, true, false);
 
-    // Estado del juego
     if (G->game_over)
     {
-        attron(COLOR_PAIR(COLOR_UI + 2) | A_BOLD | A_BLINK);
+        safe_attron(COLOR_UI + 2, true, true);
         mvprintw(start_y + 2, start_x, "GAME OVER");
-        attroff(COLOR_PAIR(COLOR_UI + 2) | A_BOLD | A_BLINK);
+        safe_attroff(COLOR_UI + 2, true, true);
     }
     else
     {
-        attron(COLOR_PAIR(COLOR_UI + 3) | A_BOLD);
+        safe_attron(COLOR_UI + 3, true, false);
         mvprintw(start_y + 2, start_x, "RUNNING");
-        attroff(COLOR_PAIR(COLOR_UI + 3) | A_BOLD);
+        safe_attroff(COLOR_UI + 3, true, false);
     }
 
-    // Dimensiones del tablero
-    attron(COLOR_PAIR(COLOR_UI + 0));
+    safe_attron(COLOR_UI + 0, false, false);
     mvprintw(start_y + 4, start_x, "Board: %ux%u", G->w, G->h);
     mvprintw(start_y + 5, start_x, "Players: %u", G->n_players);
-    attroff(COLOR_PAIR(COLOR_UI + 0));
+    safe_attroff(COLOR_UI + 0, false, false);
 }
 
 static void draw_legend(int start_y, int start_x)
 {
-    attron(COLOR_PAIR(COLOR_UI + 1) | A_BOLD);
+    safe_attron(COLOR_UI + 1, true, false);
     mvprintw(start_y, start_x, "Legend:");
-    attroff(COLOR_PAIR(COLOR_UI + 1) | A_BOLD);
+    safe_attroff(COLOR_UI + 1, true, false);
 
-    attron(COLOR_PAIR(COLOR_UI + 0));
+    safe_attron(COLOR_UI + 0, false, false);
     mvprintw(start_y + 2, start_x, "A-H : Player territories");
     mvprintw(start_y + 3, start_x, "0-9 : Reward values");
     mvprintw(start_y + 4, start_x, "Press 'q' to quit");
-    attroff(COLOR_PAIR(COLOR_UI + 0));
+    safe_attroff(COLOR_UI + 0, false, false);
 }
 
 int main(void)
 {
-    // Configurar manejo de señales
-    signal(SIGINT, cleanup_and_exit);
-    signal(SIGTERM, cleanup_and_exit);
+    install_signal_handlers();
 
     // Adjuntar memoria compartida
     GameState *G = state_attach();
@@ -266,8 +301,14 @@ int main(void)
         return 1;
     }
 
-    // Inicializar ncurses
-    initscr();
+    // Inicializar ncurses con newterm() para luego poder delscreen()
+    global_scr = newterm(NULL, stdout, stdin);
+    if (!global_scr) {
+        fprintf(stderr, "newterm failed\n");
+        cleanup_and_exit(1);
+    }
+    set_term(global_scr);
+
     ncurses_initialized = 1;
     cbreak();
     noecho();
@@ -279,12 +320,12 @@ int main(void)
 
     // Loop principal de renderizado
     int frame = 0;
-    while (frame < 2000)
-    { // Más frames para una sesión más larga
+    while (!g_should_exit && frame < 2000)
+    {
         view_wait_update_ready();
         rdlock();
 
-        // Verificar si el usuario presionó 'q' para salir
+        // Input no bloqueante
         int ch = getch();
         if (ch == 'q' || ch == 'Q')
         {
@@ -295,41 +336,31 @@ int main(void)
         // Limpiar pantalla
         clear();
 
-        // Obtener dimensiones de la terminal
+        // Dimensiones terminal
         int max_y, max_x;
         getmaxyx(stdscr, max_y, max_x);
 
-        // Calcular layout
+        // Layout (simple, el tablero usa coordenadas lógicas propias)
         int board_start_y = 1;
         int board_start_x = 2;
-        int board_height = max_y - 15; // Dejar espacio para info de jugadores
-        int board_width = max_x - 35;  // Dejar espacio para panel lateral
+        int board_height = max_y - 15;
+        int board_width  = max_x - 35;
+        if (board_height < 5) board_height = 5;
+        if (board_width  < 20) board_width  = 20;
 
-        if (board_height < 5)
-            board_height = 5;
-        if (board_width < 20)
-            board_width = 20;
-
-        // Dibujar tablero
+        // Dibujos
         draw_board(G, board_start_y, board_start_x);
 
-        // Panel lateral derecho
         int panel_x = board_start_x + board_width + 2;
-
-        // Información del juego
         draw_game_info(G, 1, panel_x);
-
-        // Leyenda
         draw_legend(8, panel_x);
 
-        // Información de jugadores (parte inferior)
-        int players_y = max_y - 8; // Posición fija cerca del fondo
+        int players_y = max_y - 8;
         draw_players_info(G, players_y, board_start_x);
 
-        // Información de frame en la esquina
-        attron(COLOR_PAIR(COLOR_UI + 0));
+        safe_attron(COLOR_UI + 0, false, false);
         mvprintw(max_y - 1, 0, "Frame: %d | Press 'q' to quit", frame);
-        attroff(COLOR_PAIR(COLOR_UI + 0));
+        safe_attroff(COLOR_UI + 0, false, false);
 
         int game_over_now = G->game_over ? 1 : 0;
         rdunlock();
@@ -338,16 +369,13 @@ int main(void)
         refresh();
         view_signal_render_complete();
 
-        if (game_over_now) {
-            // Salir inmediatamente: evitamos quedarse "tildado" en pantalla final
-            break;
-        }
+        if (game_over_now) break;
 
-        // Control de FPS (~10 fps)
+        // ~10 fps
         msleep(100);
         frame++;
     }
 
-    cleanup_and_exit();
-    return 0;
+    cleanup_and_exit(0);
+    return 0; // no se alcanza
 }

@@ -83,10 +83,20 @@ nanosleep(&ts,NULL);
             ssize_t wres = write(1, &best_dir, 1);
             (void)wres; // Suppress unused-result warning
         } else {
-            /* No tengo jugada legal: envío PASS sentinel 0xFF y termino */
+            /* No tengo jugada legal: envío PASS sentinel 0xFF y espero a que el master me marque bloqueo o termine */
             uint8_t pass = 0xFF;
             ssize_t wpass = write(1, &pass, 1);
             (void)wpass;
+            /* esperar polling corto hasta que game_over o blocked */
+            for (;;) {
+                state_read_begin();
+                bool over = G->game_over;
+                bool b = G->P[my].blocked;
+                state_read_end();
+                if (over || b) break;
+                struct timespec ts = { .tv_sec = 0, .tv_nsec = 50 * 1000 * 1000 }; // 50 ms
+                nanosleep(&ts, NULL);
+            }
             break;
         }
     }

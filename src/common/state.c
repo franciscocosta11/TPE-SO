@@ -111,5 +111,4 @@ void state_destroy(GameState *g) {
     if (g == NULL) return;
     size_t size = state_size(g->w, g->h);
     munmap(g, size);
-    shm_remove_name(SHM_GAME_STATE);
 }
