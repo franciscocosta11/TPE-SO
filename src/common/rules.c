@@ -1,8 +1,11 @@
+// This is a personal academic project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include "rules.h"
+#define DIRECTIONS 8
 
 static void dir_delta(Dir d, int *dx, int *dy) {
-    static const int DX[8] = { 0, 1, 1, 1, 0,-1,-1,-1 };
-    static const int DY[8] = {-1,-1, 0, 1, 1, 1, 0,-1 };
+    static const int DX[DIRECTIONS] = { 0, 1, 1, 1, 0,-1,-1,-1 };
+    static const int DY[DIRECTIONS] = {-1,-1, 0, 1, 1, 1, 0,-1 };
     *dx = DX[d]; *dy = DY[d];
 }
 
@@ -26,7 +29,7 @@ int rules_validate(const GameState *g, int pid, Dir d, int *gain) {
 
     /* comprobar reward en rango esperado (0..9) */
     int r = cell_reward(v);
-    if (r < 0 || r > 9) return 0; /* valor corrupto en el tablero */
+    if (r < 0 || r > 9) return 0; /* valor corrupto en el tablero */ // WORNING PVS!!!!
 
     if (gain) *gain = r;   /* 0..9 */
     return 1;
@@ -60,7 +63,7 @@ void rules_apply(GameState *g, int pid, Dir d) {
 
 int player_can_move(const GameState *g, int pid) {
     if (pid < 0 || (unsigned)pid >= g->n_players) return 0;
-    for (int d = 0; d < 8; ++d) {
+    for (int d = 0; d < DIRECTIONS; ++d) { 
         if (rules_validate(g, pid, (Dir)d, NULL)) return 1;
     }
     return 0;

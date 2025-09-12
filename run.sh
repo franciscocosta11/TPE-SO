@@ -1,1 +1,1 @@
-docker run --rm -it -v "$PWD":/work -w /work agodio/itba-so-multi-platform:3.0 /bin/bash
+docker run --rm -it --privileged -v  "$PWD":/work -w /work agodio/itba-so-multi-platform:3.0 /bin/bash

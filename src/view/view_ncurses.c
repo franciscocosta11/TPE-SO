@@ -1,3 +1,5 @@
+// This is a personal academic project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 // view/ncurses_main.c
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
@@ -14,13 +16,13 @@
 #include <signal.h>
 #include <stdbool.h>
 
-#include "shm.h"
 #include "state.h"
 #include "state_access.h"
 #include "sync.h"
 
 // Colores para los jugadores
 #define COLOR_PLAYER_BASE 10
+#define COLOR_PLAYER_CURRENT 18
 #define COLOR_REWARD 20
 #define COLOR_UI 30
 #define CELL_HEIGHT 3
@@ -33,18 +35,20 @@ static SCREEN *global_scr = NULL;
 static volatile sig_atomic_t g_should_exit = 0;
 static int g_has_colors = 0;
 
-static void request_exit(int sig) {
+static void request_exit(int sig)
+{
     (void)sig;
     g_should_exit = 1; // solo marcar; el cleanup real se hace en el main loop
 }
 
-static void install_signal_handlers(void) {
+static void install_signal_handlers(void)
+{
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_handler = request_exit;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = 0;
-    sigaction(SIGINT,  &sa, NULL);
+    sigaction(SIGINT, &sa, NULL);
     sigaction(SIGTERM, &sa, NULL);
 }
 
@@ -55,7 +59,8 @@ static void cleanup_and_exit(int code)
         // Restaurar terminal y liberar estructuras internas
         // endwin() primero, luego delscreen() si se usó newterm()
         endwin();
-        if (global_scr) {
+        if (global_scr)
+        {
             delscreen(global_scr);
             global_scr = NULL;
         }
@@ -76,8 +81,10 @@ static void msleep(int ms)
     ts.tv_sec = ms / 1000;
     ts.tv_nsec = (long)(ms % 1000) * 1000000L;
 
-    while (nanosleep(&ts, &ts) == -1 && errno == EINTR) {
-        if (g_should_exit) break;
+    while (nanosleep(&ts, &ts) == -1 && errno == EINTR)
+    {
+        if (g_should_exit)
+            break;
         continue;
     }
 }
@@ -91,37 +98,68 @@ static void init_colors(void)
         use_default_colors();
 
         // Players
-        init_pair(COLOR_PLAYER_BASE + 0, COLOR_BLACK,   COLOR_RED);
-        init_pair(COLOR_PLAYER_BASE + 1, COLOR_BLACK,   COLOR_GREEN);
-        init_pair(COLOR_PLAYER_BASE + 2, COLOR_BLACK,   COLOR_YELLOW);
-        init_pair(COLOR_PLAYER_BASE + 3, COLOR_BLACK,   COLOR_BLUE);
-        init_pair(COLOR_PLAYER_BASE + 4, COLOR_BLACK,   COLOR_MAGENTA);
-        init_pair(COLOR_PLAYER_BASE + 5, COLOR_BLACK,   COLOR_CYAN);
-        init_pair(COLOR_PLAYER_BASE + 6, COLOR_WHITE,   COLOR_RED);
-        init_pair(COLOR_PLAYER_BASE + 7, COLOR_WHITE,   COLOR_GREEN);
+        init_pair(COLOR_PLAYER_BASE + 0, COLOR_BLACK, COLOR_RED);
+        init_pair(COLOR_PLAYER_BASE + 1, COLOR_BLACK, COLOR_GREEN);
+        init_pair(COLOR_PLAYER_BASE + 2, COLOR_BLACK, COLOR_YELLOW);
+        init_pair(COLOR_PLAYER_BASE + 3, COLOR_BLACK, COLOR_BLUE);
+        init_pair(COLOR_PLAYER_BASE + 4, COLOR_BLACK, COLOR_MAGENTA);
+        init_pair(COLOR_PLAYER_BASE + 5, COLOR_BLACK, COLOR_CYAN);
+        init_pair(COLOR_PLAYER_BASE + 6, COLOR_WHITE, COLOR_RED);
+        init_pair(COLOR_PLAYER_BASE + 7, COLOR_WHITE, COLOR_GREEN);
+
+        // Players current position (colores más intensos para posición actual)
+        init_pair(COLOR_PLAYER_CURRENT + 0, COLOR_WHITE, COLOR_RED);
+        init_pair(COLOR_PLAYER_CURRENT + 1, COLOR_WHITE, COLOR_GREEN);
+        init_pair(COLOR_PLAYER_CURRENT + 2, COLOR_BLACK, COLOR_YELLOW);
+        init_pair(COLOR_PLAYER_CURRENT + 3, COLOR_WHITE, COLOR_BLUE);
+        init_pair(COLOR_PLAYER_CURRENT + 4, COLOR_WHITE, COLOR_MAGENTA);
+        init_pair(COLOR_PLAYER_CURRENT + 5, COLOR_BLACK, COLOR_CYAN);
+        init_pair(COLOR_PLAYER_CURRENT + 6, COLOR_BLACK, COLOR_RED);
+        init_pair(COLOR_PLAYER_CURRENT + 7, COLOR_BLACK, COLOR_GREEN);
 
         // UI
-        init_pair(COLOR_UI + 0, COLOR_WHITE,  COLOR_BLACK);
+        init_pair(COLOR_UI + 0, COLOR_WHITE, COLOR_BLACK);
         init_pair(COLOR_UI + 1, COLOR_YELLOW, COLOR_BLACK);
-        init_pair(COLOR_UI + 2, COLOR_RED,    COLOR_BLACK);
-        init_pair(COLOR_UI + 3, COLOR_GREEN,  COLOR_BLACK);
+        init_pair(COLOR_UI + 2, COLOR_RED, COLOR_BLACK);
+        init_pair(COLOR_UI + 3, COLOR_GREEN, COLOR_BLACK);
 
         // Recompensas
         init_pair(COLOR_REWARD + 0, COLOR_WHITE, COLOR_BLACK);
     }
 }
 
-static void safe_attron(int pair, bool bold, bool blink) {
-    if (!g_has_colors) return;
+static void safe_attron(int pair, bool bold, bool blink)
+{
+    if (!g_has_colors)
+        return;
     attron(COLOR_PAIR(pair));
-    if (bold)  attron(A_BOLD);
-    if (blink) attron(A_BLINK);
+    if (bold)
+        attron(A_BOLD);
+    if (blink)
+        attron(A_BLINK);
 }
-static void safe_attroff(int pair, bool bold, bool blink) {
-    if (!g_has_colors) return;
+static void safe_attroff(int pair, bool bold, bool blink)
+{
+    if (!g_has_colors)
+        return;
     attroff(COLOR_PAIR(pair));
-    if (bold)  attroff(A_BOLD);
-    if (blink) attroff(A_BLINK);
+    if (bold)
+        attroff(A_BOLD);
+    if (blink)
+        attroff(A_BLINK);
+}
+
+// Función auxiliar para verificar si una celda es la posición actual de algún jugador
+static bool is_current_player_position(GameState *G, unsigned x, unsigned y)
+{
+    for (unsigned i = 0; i < G->n_players; i++)
+    {
+        if (G->P[i].x == x && G->P[i].y == y)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 static void draw_board(GameState *G, int start_y, int start_x)
@@ -137,7 +175,7 @@ static void draw_board(GameState *G, int start_y, int start_x)
         for (unsigned x = 0; x < w; x++)
         {
             int cell_start_y = start_y + (int)(y * (CELL_HEIGHT - 1));
-            int cell_start_x = start_x + (int)(x * (CELL_WIDTH  - 1));
+            int cell_start_x = start_x + (int)(x * (CELL_WIDTH - 1));
 
             int v = G->board[idx(G, x, y)];
             int owner = cell_owner(v);
@@ -145,39 +183,42 @@ static void draw_board(GameState *G, int start_y, int start_x)
             int color_pair_id = COLOR_REWARD + 0;
             char content_char;
             bool is_owned = false;
+            bool is_current_pos = is_current_player_position(G, x, y);
 
             if (owner >= 0)
             {
                 is_owned = true;
-                color_pair_id = COLOR_PLAYER_BASE + (owner % 8);
-                content_char  = (char)('A' + owner);
+                color_pair_id = (is_current_pos ? COLOR_PLAYER_CURRENT : COLOR_PLAYER_BASE) + (owner % 8);
+                content_char = (char)('A' + owner);
             }
             else
             {
                 int r = cell_reward(v);
-                if (r < 0) r = 0;
-                if (r > 9) r = 9;
+                if (r > 9)
+                    r = 9; // Limitar a un dígito decimal
 
                 content_char = (char)('0' + r);
             }
 
             // Relleno interno
-            for (int inner_y = 1; inner_y < CELL_HEIGHT - 1; ++inner_y)
+            safe_attron(color_pair_id, false, false);
+            for (int inner_y = 1; inner_y < CELL_HEIGHT; ++inner_y)
             {
-                for (int inner_x = 1; inner_x < CELL_WIDTH - 1; ++inner_x)
+                for (int inner_x = 1; inner_x < CELL_WIDTH; ++inner_x)
                 {
-                    safe_attron(color_pair_id, false, false);
                     mvaddch(cell_start_y + inner_y, cell_start_x + inner_x, ' ');
-                    safe_attroff(color_pair_id, false, false);
                 }
             }
+            safe_attroff(color_pair_id, false, false);
 
             // Contenido centrado
-            if (is_owned) safe_attron(color_pair_id, true, false);
-            else          safe_attron(color_pair_id, false, false);
+            if (is_owned)
+                safe_attron(color_pair_id, true, false);
+            else
+                safe_attron(color_pair_id, false, false);
 
             mvaddch(cell_start_y + (CELL_HEIGHT / 2),
-                    cell_start_x + (CELL_WIDTH  / 2), content_char);
+                    cell_start_x + (CELL_WIDTH / 2), content_char);
             safe_attroff(color_pair_id, true, false);
 
             // Bordes
@@ -188,13 +229,15 @@ static void draw_board(GameState *G, int start_y, int start_x)
             mvaddch(cell_start_y + CELL_HEIGHT - 1, cell_start_x + CELL_WIDTH - 1,
                     (x == w - 1 && y == h - 1) ? ACS_LRCORNER : ACS_PLUS);
 
-            for (int i = 1; i < CELL_WIDTH - 1; ++i) {
+            for (int i = 1; i < CELL_WIDTH - 1; ++i)
+            {
                 mvaddch(cell_start_y, cell_start_x + i, ACS_HLINE);
-                if (y < h - 1) mvaddch(cell_start_y + CELL_HEIGHT - 1, cell_start_x + i, ACS_HLINE);
+                mvaddch(cell_start_y + CELL_HEIGHT - 1, cell_start_x + i, ACS_HLINE);
             }
-            for (int i = 1; i < CELL_HEIGHT - 1; ++i) {
+            for (int i = 1; i < CELL_HEIGHT - 1; ++i)
+            {
                 mvaddch(cell_start_y + i, cell_start_x, ACS_VLINE);
-                if (x < w - 1) mvaddch(cell_start_y + i, cell_start_x + CELL_WIDTH - 1, ACS_VLINE);
+                mvaddch(cell_start_y + i, cell_start_x + CELL_WIDTH - 1, ACS_VLINE);
             }
             safe_attroff(COLOR_UI + 0, false, false);
         }
@@ -303,7 +346,8 @@ int main(void)
 
     // Inicializar ncurses con newterm() para luego poder delscreen()
     global_scr = newterm(NULL, stdout, stdin);
-    if (!global_scr) {
+    if (!global_scr)
+    {
         fprintf(stderr, "newterm failed\n");
         cleanup_and_exit(1);
     }
@@ -344,9 +388,11 @@ int main(void)
         int board_start_y = 1;
         int board_start_x = 2;
         int board_height = max_y - 15;
-        int board_width  = max_x - 35;
-        if (board_height < 5) board_height = 5;
-        if (board_width  < 20) board_width  = 20;
+        int board_width = max_x - 35;
+        if (board_height < 5)
+            board_height = 5;
+        if (board_width < 20)
+            board_width = 20;
 
         // Dibujos
         draw_board(G, board_start_y, board_start_x);
@@ -369,7 +415,8 @@ int main(void)
         refresh();
         view_signal_render_complete();
 
-        if (game_over_now) break;
+        if (game_over_now)
+            break;
 
         // ~10 fps
         msleep(100);

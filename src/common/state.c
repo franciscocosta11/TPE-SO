@@ -1,5 +1,14 @@
+// This is a personal academic project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include "state.h"
 #include <sys/mman.h>
+
+// Constantes para la disposición de jugadores en grilla
+#define GRID_SIZE 3        // Tamaño de la grilla (3x3)
+#define GRID_DIVISIONS 6   // Divisiones del tablero para posicionar jugadores
+#define FIRST_THIRD 1      // Primera posición (1/6 del tablero)
+#define MIDDLE_THIRD 3     // Posición central (3/6 del tablero)
+#define LAST_THIRD 5       // Última posición (5/6 del tablero)
 
 int idx(const GameState *g, unsigned x, unsigned y) {
     return (int)(y * g->w + x);
@@ -66,8 +75,8 @@ static void find_nearest_free(const GameState *g, int x0, int y0, int *outx, int
 }
 
 void players_place_grid(GameState *g) {
-    int xs[3] = { (g->w * 1) / 6, (g->w * 3) / 6, (g->w * 5) / 6 };
-    int ys[3] = { (g->h * 1) / 6, (g->h * 3) / 6, (g->h * 5) / 6 };
+    int xs[3] = { (g->w * FIRST_THIRD) / GRID_DIVISIONS, (g->w * MIDDLE_THIRD) / GRID_DIVISIONS, (g->w * LAST_THIRD) / GRID_DIVISIONS };
+    int ys[3] = { (g->h * FIRST_THIRD) / GRID_DIVISIONS, (g->h * MIDDLE_THIRD) / GRID_DIVISIONS, (g->h * LAST_THIRD) / GRID_DIVISIONS };
 
     for (int i = 0; i < 3; ++i) {
         if (xs[i] < 0) xs[i] = 0;
@@ -82,7 +91,6 @@ void players_place_grid(GameState *g) {
     for (unsigned i = 0; i < np; ++i) {
         int row = (int)(i / 3);
         int col = (int)(i % 3);
-        if (row > 2) row = 2;
         int tx = xs[col];
         int ty = ys[row];
 
