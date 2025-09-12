@@ -3,6 +3,9 @@
 /player
 /view_ncurses
 
+/CuTest/
+/tests/
+
 /reader_stress
 /writer_tick
 /state_header_sanity

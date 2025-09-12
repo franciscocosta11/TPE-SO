@@ -16,7 +16,7 @@ OBJ_COMMON=$(SRC_COMMON:.c=.o)
 SRC_MASTER=src/master/master_logic.c
 OBJ_MASTER=$(SRC_MASTER:.c=.o)
 
-all: master view player view_ncurses
+all: master player view_ncurses
 # (no agrego los test a 'all' para no tocar tu flujo normal)
 
 master: src/master/main.c $(OBJ_COMMON) $(OBJ_MASTER)

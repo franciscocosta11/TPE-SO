@@ -22,7 +22,7 @@
 
 // Colores para los jugadores
 #define COLOR_PLAYER_BASE 10
-#define COLOR_PLAYER_CURRENT 18
+#define COLOR_PLAYER_CURRENT (COLOR_PLAYER_BASE + 20)
 #define COLOR_REWARD 20
 #define COLOR_UI 30
 #define CELL_HEIGHT 3
@@ -75,19 +75,7 @@ static void cleanup_and_exit(int code)
     _exit(code);
 }
 
-static void msleep(int ms)
-{
-    struct timespec ts;
-    ts.tv_sec = ms / 1000;
-    ts.tv_nsec = (long)(ms % 1000) * 1000000L;
-
-    while (nanosleep(&ts, &ts) == -1 && errno == EINTR)
-    {
-        if (g_should_exit)
-            break;
-        continue;
-    }
-}
+/* sin sleep: el master controla el ritmo */
 
 static void init_colors(void)
 {
@@ -97,36 +85,36 @@ static void init_colors(void)
         start_color();
         use_default_colors();
 
-        // Players
-        init_pair(COLOR_PLAYER_BASE + 0, COLOR_BLACK, COLOR_RED);
-        init_pair(COLOR_PLAYER_BASE + 1, COLOR_BLACK, COLOR_GREEN);
-        init_pair(COLOR_PLAYER_BASE + 2, COLOR_BLACK, COLOR_YELLOW);
-        init_pair(COLOR_PLAYER_BASE + 3, COLOR_BLACK, COLOR_BLUE);
-        init_pair(COLOR_PLAYER_BASE + 4, COLOR_BLACK, COLOR_MAGENTA);
-        init_pair(COLOR_PLAYER_BASE + 5, COLOR_BLACK, COLOR_CYAN);
-        init_pair(COLOR_PLAYER_BASE + 6, COLOR_WHITE, COLOR_RED);
-        init_pair(COLOR_PLAYER_BASE + 7, COLOR_WHITE, COLOR_GREEN);
-
-        // Players current position (colores más intensos para posición actual)
-        init_pair(COLOR_PLAYER_CURRENT + 0, COLOR_WHITE, COLOR_RED);
-        init_pair(COLOR_PLAYER_CURRENT + 1, COLOR_WHITE, COLOR_GREEN);
-        init_pair(COLOR_PLAYER_CURRENT + 2, COLOR_BLACK, COLOR_YELLOW);
-        init_pair(COLOR_PLAYER_CURRENT + 3, COLOR_WHITE, COLOR_BLUE);
-        init_pair(COLOR_PLAYER_CURRENT + 4, COLOR_WHITE, COLOR_MAGENTA);
-        init_pair(COLOR_PLAYER_CURRENT + 5, COLOR_BLACK, COLOR_CYAN);
-        init_pair(COLOR_PLAYER_CURRENT + 6, COLOR_BLACK, COLOR_RED);
-        init_pair(COLOR_PLAYER_CURRENT + 7, COLOR_BLACK, COLOR_GREEN);
+    // Players
+    init_pair(COLOR_PLAYER_BASE + 0, COLOR_WHITE,   COLOR_RED);
+    init_pair(COLOR_PLAYER_BASE + 1, COLOR_WHITE,   COLOR_GREEN);
+    init_pair(COLOR_PLAYER_BASE + 2, COLOR_WHITE,   COLOR_YELLOW);
+    init_pair(COLOR_PLAYER_BASE + 3, COLOR_WHITE,   COLOR_BLUE);
+    init_pair(COLOR_PLAYER_BASE + 4, COLOR_WHITE,   COLOR_MAGENTA);
+    init_pair(COLOR_PLAYER_BASE + 5, COLOR_WHITE,   COLOR_CYAN);
+    init_pair(COLOR_PLAYER_BASE + 6, COLOR_WHITE,   COLOR_RED);
+    init_pair(COLOR_PLAYER_BASE + 7, COLOR_WHITE,   COLOR_GREEN);
+            // Colores especiales para la cabeza: letra del color del jugador sobre su propio fondo
+            init_pair(COLOR_PLAYER_BASE + 20, COLOR_RED,     COLOR_RED);    // cabeza rojo (A)
+            init_pair(COLOR_PLAYER_BASE + 21, COLOR_GREEN,   COLOR_GREEN);  // cabeza verde (B)
+            init_pair(COLOR_PLAYER_BASE + 22, COLOR_YELLOW,  COLOR_YELLOW); // cabeza amarillo (C)
+            init_pair(COLOR_PLAYER_BASE + 23, COLOR_BLUE,    COLOR_BLUE);   // cabeza azul (D)
+            init_pair(COLOR_PLAYER_BASE + 24, COLOR_MAGENTA, COLOR_MAGENTA);// cabeza magenta (E)
+            init_pair(COLOR_PLAYER_BASE + 25, COLOR_CYAN,    COLOR_CYAN);   // cabeza cian (F)
+            init_pair(COLOR_PLAYER_BASE + 26, COLOR_RED,     COLOR_RED);    // cabeza rojo (G)
+            init_pair(COLOR_PLAYER_BASE + 27, COLOR_GREEN,   COLOR_GREEN);  // cabeza verde (H)
 
         // UI
-        init_pair(COLOR_UI + 0, COLOR_WHITE, COLOR_BLACK);
+        init_pair(COLOR_UI + 0, COLOR_WHITE,  COLOR_BLACK); // bordes en blanco
         init_pair(COLOR_UI + 1, COLOR_YELLOW, COLOR_BLACK);
-        init_pair(COLOR_UI + 2, COLOR_RED, COLOR_BLACK);
-        init_pair(COLOR_UI + 3, COLOR_GREEN, COLOR_BLACK);
+        init_pair(COLOR_UI + 2, COLOR_RED,    COLOR_BLACK);
+        init_pair(COLOR_UI + 3, COLOR_GREEN,  COLOR_BLACK);
 
         // Recompensas
         init_pair(COLOR_REWARD + 0, COLOR_WHITE, COLOR_BLACK);
     }
 }
+
 
 static void safe_attron(int pair, bool bold, bool blink)
 {
@@ -384,25 +372,29 @@ int main(void)
         int max_y, max_x;
         getmaxyx(stdscr, max_y, max_x);
 
-        // Layout (simple, el tablero usa coordenadas lógicas propias)
-        int board_start_y = 1;
+        // Layout: texto arriba, tablero abajo, panel a la derecha
+        int top_text_height = 10;               // altura reservada para texto (arriba)
+        if (top_text_height < 6) top_text_height = 6;
+        if (top_text_height > max_y - 5) top_text_height = max_y - 5; // evitar superposición
+
+        int board_start_y = top_text_height;    // arranca debajo del bloque de texto
         int board_start_x = 2;
-        int board_height = max_y - 15;
-        int board_width = max_x - 35;
-        if (board_height < 5)
-            board_height = 5;
-        if (board_width < 20)
-            board_width = 20;
+        int board_height  = max_y - top_text_height - 2;
+        int board_width   = max_x - 35;
+        if (board_height < 5) board_height = 5;
+        if (board_width  < 20) board_width  = 20;
 
         // Dibujos
         draw_board(G, board_start_y, board_start_x);
 
         int panel_x = board_start_x + board_width + 2;
-        draw_game_info(G, 1, panel_x);
-        draw_legend(8, panel_x);
+    // Texto arriba (status y leyenda)
+    draw_game_info(G, 1, panel_x);
+    draw_legend(6, panel_x);
 
-        int players_y = max_y - 8;
-        draw_players_info(G, players_y, board_start_x);
+    // Info de jugadores también en el bloque superior
+    int players_y = 1;
+    draw_players_info(G, players_y, board_start_x);
 
         safe_attron(COLOR_UI + 0, false, false);
         mvprintw(max_y - 1, 0, "Frame: %d | Press 'q' to quit", frame);
@@ -418,8 +410,7 @@ int main(void)
         if (game_over_now)
             break;
 
-        // ~10 fps
-        msleep(100);
+        /* Sin sleep aquí: el master controla el pacing con -d. */
         frame++;
     }
 

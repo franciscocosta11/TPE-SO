@@ -39,6 +39,16 @@ static long ms_since(const struct timespec *t0)
     return ms;
 }
 
+/* sleep en milisegundos */
+static void msleep_int(int ms)
+{
+    if (ms <= 0) return;
+    struct timespec ts;
+    ts.tv_sec = ms / 1000;
+    ts.tv_nsec = (long)(ms % 1000) * 1000000L;
+    nanosleep(&ts, NULL);
+}
+
 /* --- ranking final --- */
 static void print_ranking(const GameState *G)
 {
@@ -174,7 +184,10 @@ int main(int argc, char *argv[])
         return 1;
     }
     if (N > MAX_PLAYERS)
-        N = MAX_PLAYERS;
+    {
+        fprintf(stderr, "too many players: %u (max %d)\n", N, MAX_PLAYERS);
+        return 1;
+    }
 
     const char *default_player_path = "./player";
 
@@ -216,6 +229,7 @@ int main(int argc, char *argv[])
     {
         view_pid = spawn_view(cfg.view_path);
     }
+    int has_view = (view_pid > 0);
 
     /* spawn players */
     int rfd[MAX_PLAYERS];
@@ -255,8 +269,9 @@ int main(int argc, char *argv[])
         G->P[i].pid = pids[i];
     state_write_end();
 
-    /* frame inicial */
-    view_signal_update_ready();
+    /* frame inicial (si hay vista) */
+    if (has_view)
+        view_signal_update_ready();
 
     /* habilitar 1er turno */
     for (unsigned i = 0; i < N; ++i)
@@ -382,17 +397,10 @@ int main(int argc, char *argv[])
             if (maxfd < 0)
                 break;
 
+            /* poll corto y constante para no enlazarlo al pacing de vista */
             struct timeval tv;
-            if (cfg.delay > 0)
-            {
-                tv.tv_sec = (cfg.delay >= 1000) ? (cfg.delay / 1000) : 0;
-                tv.tv_usec = (cfg.delay % 1000) * 1000;
-            }
-            else
-            {
-                tv.tv_sec = 0;
-                tv.tv_usec = 10000;
-            }
+            tv.tv_sec = 0;
+            tv.tv_usec = 10000; /* 10ms */
 
             int rv = select(maxfd + 1, &rfds, NULL, NULL, &tv);
             if (rv < 0)
@@ -504,9 +512,14 @@ int main(int argc, char *argv[])
             }
         } /* fin loop interno */
 
-        /* view: fin de ronda */
-        view_signal_update_ready();
-        view_wait_render_complete();
+        /* view: fin de ronda y pacing de frames */
+        if (has_view)
+        {
+            view_signal_update_ready();
+            view_wait_render_complete();
+        }
+        /* dormir el tiempo configurado entre vistas, incluso sin vista */
+        msleep_int(cfg.delay);
 
         /* preparar próxima ronda */
         memset(took_turn, 0, sizeof(took_turn));
@@ -541,8 +554,9 @@ int main(int argc, char *argv[])
     G->game_over = true;
     state_write_end();
 
-    view_signal_update_ready();
-    // view_wait_render_complete();
+    if (has_view)
+        view_signal_update_ready();
+    // no esperamos render aquí
 
     for (unsigned i = 0; i < N; ++i)
         if (pids[i] > 0)
