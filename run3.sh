@@ -1,0 +1,1 @@
+./master -v view_ncurses -p player player player

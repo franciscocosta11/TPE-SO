@@ -22,8 +22,9 @@ static void msleep(int ms)
     nanosleep(&ts, NULL);
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
+    (void)argc; (void)argv; /* ancho/alto pueden recibirse por argv; el estado real viene de SHM */
     GameState *G = state_attach();
     if (!G)
     {

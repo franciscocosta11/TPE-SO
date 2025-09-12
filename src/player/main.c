@@ -5,13 +5,14 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "time.h"
+#include <time.h>
 #include <stdbool.h>
 #include <sys/mman.h> // For PROT_READ
 
 #include "shm.h"
 #include "state.h"
 #include "state_access.h"
+#include "sync.h"
 
 // Ensure Dir type is defined or included
 #include "rules.h" // Assuming Dir is defined here; adjust if needed
@@ -31,7 +32,7 @@ static int find_self_index(const GameState *G, pid_t me)
     return -1;
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
     setvbuf(stdout, NULL, _IONBF, 0);
 
@@ -40,6 +41,13 @@ int main(void)
         return 1;
     if (sync_attach() != 0)
         return 1;
+
+    unsigned argW = 0, argH = 0;
+    if (argc >= 3)
+    {
+        argW = (unsigned)strtoul(argv[1], NULL, 10);
+        argH = (unsigned)strtoul(argv[2], NULL, 10);
+    }
 
     pid_t me = getpid();
     int my = -1;
@@ -50,6 +58,14 @@ int main(void)
         state_read_begin();
         my = find_self_index(G, me);
         bool over = G->game_over;
+        /* Advertir una única vez si el tamaño indicado por argv difiere del SHM */
+        static int warned_size = 0;
+        if (!warned_size && argW && argH && (G->w != argW || G->h != argH))
+        {
+            fprintf(stderr, "player: aviso: tamaño SHM=%ux%u difiere de argv=%ux%u\n",
+                    G->w, G->h, argW, argH);
+            warned_size = 1;
+        }
         state_read_end();
         if (over)
             return 0;

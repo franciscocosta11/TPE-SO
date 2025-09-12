@@ -1,1 +1,1 @@
-./master -v view_ncurses -p player player player
+apt-get install libncurses5-dev libncursesw5-dev

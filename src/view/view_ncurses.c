@@ -312,9 +312,16 @@ static void draw_legend(int start_y, int start_x)
     safe_attroff(COLOR_UI + 0, false, false);
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
     install_signal_handlers();
+
+    unsigned argW = 0, argH = 0;
+    if (argc >= 3)
+    {
+        argW = (unsigned)atoi(argv[1]);
+        argH = (unsigned)atoi(argv[2]);
+    }
 
     // Adjuntar memoria compartida
     GameState *G = state_attach();
@@ -352,17 +359,30 @@ int main(void)
 
     // Loop principal de renderizado
     int frame = 0;
+    int quit_requested = 0;
     while (!g_should_exit && frame < 2000)
     {
         view_wait_update_ready();
         rdlock();
 
+        /* Validación opcional de tamaños si vinieron por argv */
+        if (argW && argH && (G->w != argW || G->h != argH))
+        {
+            /* Solo advertir una vez al primer frame para evitar spam */
+            static int warned = 0;
+            if (!warned)
+            {
+                fprintf(stderr, "view_ncurses: aviso: tamaño SHM=%ux%u difiere de argv=%ux%u\n",
+                        G->w, G->h, argW, argH);
+                warned = 1;
+            }
+        }
+
         // Input no bloqueante
         int ch = getch();
         if (ch == 'q' || ch == 'Q')
         {
-            rdunlock();
-            break;
+            quit_requested = 1;
         }
 
         // Limpiar pantalla
@@ -407,7 +427,7 @@ int main(void)
         refresh();
         view_signal_render_complete();
 
-        if (game_over_now)
+        if (game_over_now || quit_requested)
             break;
 
         /* Sin sleep aquí: el master controla el pacing con -d. */
