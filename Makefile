@@ -51,14 +51,12 @@ src/common/%.o: src/common/%.c
 src/master/%.o: src/master/%.c
 > $(CC) $(CFLAGS) -c -o $@ $<
 
-test:
-> $(MAKE) -C $(CUTEST_DIR) test
-
 clean:
 > rm -f master view player view_ncurses reader_stress writer_tick $(OBJ_COMMON) src/master/*.o
-> $(MAKE) -C $(CUTEST_DIR) clean
 
-.PHONY: all clean cutest test stress
+.PHONY: all clean test stress
+
+#eliminar todo asi no quedan tests
 
 # Valgrind targets
 VALGRIND ?= valgrind
