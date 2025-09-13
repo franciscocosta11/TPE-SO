@@ -29,7 +29,7 @@ int rules_validate(const GameState *g, int pid, Dir d, int *gain) {
 
     /* comprobar reward en rango esperado (0..9) */
     int r = cell_reward(v);
-    if (r < 0 || r > 9) return 0; /* valor corrupto en el tablero */ // WORNING PVS!!!!
+    if ( r > 9) return 0; /* valor corrupto en el tablero */
 
     if (gain) *gain = r;   /* 0..9 */
     return 1;

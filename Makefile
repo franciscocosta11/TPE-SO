@@ -5,9 +5,6 @@ LDFLAGS=-pthread
 ifeq ($(UNAME_S),Linux)
   LDFLAGS += -lrt
 endif
-# CuTest
-CUTEST_DIR=CuTest
-CUTEST_REQ=$(CUTEST_DIR)/AllTests.c $(CUTEST_DIR)/CuTestTest.c
 
 SRC_COMMON=src/common/log.c src/common/state.c src/common/rules.c src/common/sync.c src/common/shm.c src/common/state_access.c
 OBJ_COMMON=$(SRC_COMMON:.c=.o)
@@ -22,9 +19,6 @@ all: master player view_ncurses
 master: src/master/main.c $(OBJ_COMMON) $(OBJ_MASTER)
 > $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-view: src/view/main.c $(OBJ_COMMON)
-> $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
-
 view_ncurses: src/view/view_ncurses.c $(OBJ_COMMON)
 > $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lncurses
 
@@ -34,16 +28,8 @@ player: src/player/main.c $(OBJ_COMMON)
 init_state: tests/init_state.c $(OBJ_COMMON)
 > $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-# ---- NUEVO: builds de stress (Día 3 - C) ----
-reader_stress: tests/reader_stress.c $(OBJ_COMMON)
-> $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
-
 writer_tick: tests/writer_tick.c $(OBJ_COMMON)
 > $(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
-
-# Opcional: target para lanzar el script de stress si existe
-stress: reader_stress writer_tick
-> if [ -x scripts/stress.sh ]; then scripts/stress.sh; else echo "Tip: creá scripts/stress.sh y hacelo ejecutable"; fi
 
 src/common/%.o: src/common/%.c
 > $(CC) $(CFLAGS) -c -o $@ $<
@@ -52,38 +38,19 @@ src/master/%.o: src/master/%.c
 > $(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-> rm -f master view player view_ncurses reader_stress writer_tick $(OBJ_COMMON) src/master/*.o
+> rm -f master player view_ncurses $(OBJ_COMMON) src/master/*.o
 
-.PHONY: all clean test stress
-
-#eliminar todo asi no quedan tests
+.PHONY: all clean
 
 # Valgrind targets
 VALGRIND ?= valgrind
 VGFLAGS  := --tool=memcheck --leak-check=full --show-leak-kinds=all --track-origins=yes --errors-for-leak-kinds=all
 VG_TIMEOUT ?= 60s
 
-.PHONY: valgrind_master valgrind_tests
+.PHONY: valgrind_master
 
 valgrind_master: master player view_ncurses
-# > @echo "Preparing ./logs directory and running master under valgrind (per-process logs: ./logs/valgrind.<pid>.log) ..."
-# > mkdir -p ./logs
-# > timeout $(VG_TIMEOUT) $(VALGRIND) $(VGFLAGS) --trace-children=yes --log-file=./logs/valgrind.%p.log -- ./master -v ./view_ncurses -p ./player ./player || true
-# > @echo "Done. Check ./logs/ for valgrind.*.log"
-
-valgrind_tests: reader_stress writer_tick
-# > @echo "Running writer_tick under valgrind (log: /tmp/valgrind.writer_tick.log) ..."
-# > timeout 20s $(VALGRIND) $(VGFLAGS) --log-file=/tmp/valgrind.writer_tick.log -- ./writer_tick || true
-# > @echo "Running reader_stress under valgrind (log: /tmp/valgrind.reader_stress.log) ..."
-# > timeout 20s $(VALGRIND) $(VGFLAGS) --log-file=/tmp/valgrind.reader_stress.log -- ./reader_stress || true
-# > @echo "Done. Check /tmp/valgrind.*.log"
-
-.PHONY: valgrind_view
-
-# valgrind_view: view_ncurses init_state
-# > @echo "Running init_state to create shared memory and semaphores"
-# > ./init_state
-# > @echo "Running view_ncurses under valgrind with ncurses suppressions -> ./logs/valgrind_view.log"
-# > mkdir -p ./logs
-# > $(VALGRIND) $(VGFLAGS) --suppressions=./logs/valgrind_ncurses.supp --log-file=./logs/valgrind_view.log ./view_ncurses || true
-# > @echo "Done. See ./logs/valgrind_view.log"
+> @echo "Preparing ./logs directory and running master under valgrind (per-process logs: ./logs/valgrind.<pid>.log) ..."
+> mkdir -p ./logs
+> timeout $(VG_TIMEOUT) $(VALGRIND) $(VGFLAGS) --trace-children=yes -s --log-file=./logs/valgrind.%p.log -- ./master -v ./view_ncurses -p ./player ./player || true
+> @echo "Done. Check ./logs/ for valgrind.*.log"

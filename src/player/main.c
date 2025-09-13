@@ -14,12 +14,12 @@
 #include "sync.h"
 #include "rules.h"
 
-#define MAX_INIT_TRIES 200           // Maximum number of attempts to find self in game state
-#define INIT_POLL_DELAY_MS 50        // Delay between init attempts in milliseconds
-#define TURN_WAIT_TIMEOUT_MS 150     // Timeout for waiting for turn
-#define PASS_SENTINEL 0xFF           // Value sent when no legal moves are available
-#define POLL_DELAY_MS 50             // General polling delay
-#define NANOSEC_PER_MS 1000000L      // Number of nanoseconds in a millisecond
+#define MAX_INIT_TRIES 200       // Maximum number of attempts to find self in game state
+#define INIT_POLL_DELAY_MS 50    // Delay between init attempts in milliseconds
+#define TURN_WAIT_TIMEOUT_MS 150 // Timeout for waiting for turn
+#define PASS_SENTINEL 0xFF       // Value sent when no legal moves are available
+#define POLL_DELAY_MS 50         // General polling delay
+#define NANOSEC_PER_MS 1000000L  // Number of nanoseconds in a millisecond
 
 static int find_self_index(const GameState *G, pid_t me)
 {
@@ -31,7 +31,8 @@ static int find_self_index(const GameState *G, pid_t me)
 
 static void parse_dims(int argc, char *argv[], unsigned *w, unsigned *h)
 {
-    *w = 0; *h = 0;
+    *w = 0;
+    *h = 0;
     if (argc >= 3)
     {
         *w = (unsigned)strtoul(argv[1], NULL, 10);
@@ -86,7 +87,7 @@ static void send_pass_and_wait(GameState *G, int my)
     uint8_t pass = PASS_SENTINEL;
     ssize_t wr = write(1, &pass, 1);
     (void)wr;
-    for (;;)
+    while (1)
     {
         state_read_begin();
         bool over = G->game_over;

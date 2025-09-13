@@ -392,8 +392,6 @@ int main(int argc, char *argv[])
 
         // Layout: texto arriba, tablero abajo, panel a la derecha
         int top_text_height = 10; // altura reservada para texto (arriba)
-        if (top_text_height < 6)
-            top_text_height = 6;
         if (top_text_height > max_y - 5)
             top_text_height = max_y - 5; // evitar superposición
 

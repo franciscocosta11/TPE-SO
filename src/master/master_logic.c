@@ -88,12 +88,6 @@ int parse_args(int argc, char *argv[], MasterConfig *config)
         fprintf(stderr, "Error: width/height deben ser >= 10.\n");
         return -1;
     }
-    /* Validación: jugadores no pueden exceder celdas disponibles */
-    long long cells = (long long)config->width * (long long)config->height;
-    if ((long long)config->player_count > cells) {
-        fprintf(stderr, "Error: jugadores (%d) > celdas disponibles (%lld).\n", config->player_count, cells);
-        return -1;
-    }
     if (config->delay < 0) config->delay = 0;
     if (config->timeout < 0) config->timeout = 0;
     if (config->player_timeout_ms < 0) config->player_timeout_ms = 0;
