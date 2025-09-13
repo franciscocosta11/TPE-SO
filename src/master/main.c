@@ -254,17 +254,17 @@ int main(int argc, char *argv[])
     /* turnos se manejan secuencialmente, no necesitamos took_turn */
         /* abrir descriptor para que el master pueda anotar los bytes recibidos en el log del player */
         char logpath[256];
-        snprintf(logpath, sizeof(logpath), "./logs/player-%d.log", (int)pids[i]);
+        //snprintf(logpath, sizeof(logpath), "./logs/player-%d.log", (int)pids[i]);
         int lf = open(logpath, O_CREAT | O_WRONLY | O_APPEND, 0644);
         if (lf == -1)
         {
-            fprintf(stderr, "master: open('%s') failed: %s\n", logpath, strerror(errno));
+            //fprintf(stderr, "master: open('%s') failed: %s\n", logpath, strerror(errno));
             plogfd[i] = -1;
         }
         else
         {
             plogfd[i] = lf;
-            dprintf(plogfd[i], "MASTER: opened log for pid=%d\n", (int)pids[i]);
+            //dprintf(plogfd[i], "MASTER: opened log for pid=%d\n", (int)pids[i]);
         }
     }
 
