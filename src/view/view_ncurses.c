@@ -244,30 +244,30 @@ static void draw_players_info(GameState *G, int start_y, int start_x)
         int y = start_y + 2 + (int)i;
         int color_pair = COLOR_PLAYER_BASE + (int)(i % 8);
 
-        // Letra del jugador
+        // Letra del jugador (PA, PB, PC...)
         safe_attron(color_pair, true, false);
-        mvaddch(y, start_x, (char)('A' + i));
+        mvprintw(y, start_x, "P%c", 'A' + i);
         safe_attroff(color_pair, true, false);
 
         // Info básica
         safe_attron(COLOR_UI + 0, false, false);
-        mvprintw(y, start_x + 2, "pos=(%u,%u) score=%u",
+        mvprintw(y, start_x + 4, "pos=(%u,%u) score=%u",
                  G->P[i].x, G->P[i].y, G->P[i].score);
         safe_attroff(COLOR_UI + 0, false, false);
 
         // Stats
         safe_attron(COLOR_UI + 3, false, false);
-        mvprintw(y, start_x + 25, "valid=%u", G->P[i].valids);
+        mvprintw(y, start_x + 27, "valid=%u", G->P[i].valids);
         safe_attroff(COLOR_UI + 3, false, false);
 
         safe_attron(COLOR_UI + 2, false, false);
-        mvprintw(y, start_x + 35, "invalid=%u", G->P[i].invalids);
+        mvprintw(y, start_x + 37, "invalid=%u", G->P[i].invalids);
         safe_attroff(COLOR_UI + 2, false, false);
 
         if (G->P[i].blocked)
         {
             safe_attron(COLOR_UI + 2, true, true);
-            mvprintw(y, start_x + 48, "[BLOCKED]");
+            mvprintw(y, start_x + 50, "[BLOCKED]");
             safe_attroff(COLOR_UI + 2, true, true);
         }
     }

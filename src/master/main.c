@@ -77,8 +77,8 @@ static void print_ranking(const GameState *G)
     {
         unsigned i = idxs[k];
         const Player *p = &G->P[i];
-        printf("#%u  P%u  score=%u  valids=%u  invalids=%u  timeouts=%u  pos=(%u,%u)%s\n",
-               k + 1, i, p->score, p->valids, p->invalids, p->timeouts,
+        printf("#%u  P%c  score=%u  valids=%u  invalids=%u  timeouts=%u  pos=(%u,%u)%s\n",
+               k + 1, 'A' + i, p->score, p->valids, p->invalids, p->timeouts,
                (unsigned)p->x, (unsigned)p->y, p->blocked ? " [BLOCKED]" : "");
     }
     printf("=====================\n");
