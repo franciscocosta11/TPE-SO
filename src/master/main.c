@@ -241,7 +241,6 @@ int main(int argc, char *argv[])
     int rfd[MAX_PLAYERS];
     pid_t pids[MAX_PLAYERS];
     int alive[MAX_PLAYERS];
-    int took_turn[MAX_PLAYERS];
     int plogfd[MAX_PLAYERS];
 
     for (unsigned i = 0; i < N; ++i)
@@ -252,7 +251,7 @@ int main(int argc, char *argv[])
     pids[i] = spawn_player(pp, pf, W, H);
         rfd[i] = pf[0];
         alive[i] = 1;
-        took_turn[i] = 0;
+    /* turnos se manejan secuencialmente, no necesitamos took_turn */
         /* abrir descriptor para que el master pueda anotar los bytes recibidos en el log del player */
         char logpath[256];
         snprintf(logpath, sizeof(logpath), "./logs/player-%d.log", (int)pids[i]);
@@ -278,11 +277,8 @@ int main(int argc, char *argv[])
     /* frame inicial (si hay vista) */
     if (has_view)
         view_signal_update_ready();
-
-    /* habilitar 1er turno */
-    for (unsigned i = 0; i < N; ++i)
-        if (alive[i] && !blocked[i])
-            player_signal_turn((int)i);
+    /* Nota: ya no señalizamos a todos los jugadores. El master ahora
+     * otorga turnos de forma estrictamente secuencial por jugador. */
 
     int rounds = 0;
     const int MAX_ROUNDS = 200;
@@ -330,50 +326,19 @@ int main(int argc, char *argv[])
             break;
         }
 
-        /* tiempos de control */
-        struct timespec t_round0;
-        clock_gettime(CLOCK_MONOTONIC, &t_round0);
-    /* timeout global entre movimientos válidos (ms) */
-    int valid_timeout_ms = (cfg.timeout > 0) ? cfg.timeout : 0;
+        /* timeouts de control */
+        int valid_timeout_ms = (cfg.timeout > 0) ? cfg.timeout : 0;
         int player_timeout_ms = (cfg.player_timeout_ms > 0) ? cfg.player_timeout_ms : 0;
 
-        /* loop interno de la ronda */
-        int progress_this_round = 0; /* 1 si hubo movimiento / EOF / timeout aplicado */
-        while (1)
+        /* una ronda = exactamente un intento de turno por jugador vivo no bloqueado,
+         * en orden round-robin, con semáforo por jugador. */
+        for (unsigned k = 0; k < N && !stop_flag; ++k)
         {
-            /* fin por completitud */
-            int round_done = 1;
-            for (unsigned i = 0; i < N; ++i)
-                if (alive[i] && !blocked[i] && !took_turn[i])
-                {
-                    round_done = 0;
-                    break;
-                }
-            if (round_done)
-                break;
+            unsigned i = (rr_start + k) % N;
+            if (!alive[i] || blocked[i])
+                continue;
 
-            /* aplicar timeouts individuales (Día 6) */
-            if (player_timeout_ms > 0)
-            {
-                long elapsed_ms = ms_since(&t_round0);
-                if (elapsed_ms >= player_timeout_ms)
-                {
-                    state_write_begin();
-                    for (unsigned i = 0; i < N; ++i)
-                    {
-                        if (alive[i] && !blocked[i] && !took_turn[i])
-                        {
-                            took_turn[i] = 1;
-                            G->P[i].timeouts += 1; /* cuenta timeout individual */
-                            progress_this_round = 1;
-                            /* no modificamos blocked: podrá jugar próxima ronda si tiene jugadas */
-                        }
-                    }
-                    state_write_end();
-                }
-            }
-
-            /* fin por timeout global entre válidas: termina el juego */
+            /* chequeo de timeout global entre válidas */
             if (valid_timeout_ms > 0)
             {
                 long since_valid = ms_since(&last_valid_ts);
@@ -385,65 +350,79 @@ int main(int argc, char *argv[])
                 }
             }
 
-            /* esperar pipes listos */
-            fd_set rfds;
-            FD_ZERO(&rfds);
-            int maxfd = -1;
-            for (unsigned i = 0; i < N; ++i)
+            /* otorgar turno al jugador i */
+            player_signal_turn((int)i);
+
+            /* esperar movimiento del jugador i en su pipe con timeout individual */
+            int remaining_ms = player_timeout_ms;
+            int got_event = 0; /* 1 si recibimos algo (movimiento/EOF/error) */
+            while (!got_event && !stop_flag)
             {
-                if (alive[i] && !blocked[i] && !took_turn[i])
+                /* chequear timeout global entre válidas durante la espera */
+                if (valid_timeout_ms > 0)
                 {
-                    FD_SET(rfd[i], &rfds);
-                    if (rfd[i] > maxfd)
-                        maxfd = rfd[i];
+                    long since_valid = ms_since(&last_valid_ts);
+                    if (since_valid >= valid_timeout_ms)
+                    {
+                        printf("termination: timeout between valid moves (%ld ms)\n", since_valid);
+                        stop_flag = 1;
+                        break;
+                    }
                 }
-            }
-            if (maxfd < 0)
-                break;
 
-            /* poll corto y constante para no enlazarlo al pacing de vista */
-            struct timeval tv;
-            tv.tv_sec = 0;
-            tv.tv_usec = 10000; /* 10ms */
+                fd_set rfds;
+                FD_ZERO(&rfds);
+                FD_SET(rfd[i], &rfds);
+                struct timeval tv;
+                if (remaining_ms > 0)
+                {
+                    tv.tv_sec = remaining_ms / 1000;
+                    tv.tv_usec = (remaining_ms % 1000) * 1000;
+                }
+                else
+                {
+                    tv.tv_sec = 0; tv.tv_usec = 0;
+                }
+                struct timespec t0;
+                clock_gettime(CLOCK_MONOTONIC, &t0);
+                int rv = select(rfd[i] + 1, &rfds, NULL, NULL, (player_timeout_ms > 0 ? &tv : NULL));
+                if (rv < 0)
+                {
+                    if (errno == EINTR)
+                        continue;
+                    perror("select");
+                    got_event = 1; /* tratamos como evento para avanzar */
+                    alive[i] = 0;
+                    close(rfd[i]);
+                    break;
+                }
+                if (rv == 0)
+                {
+                    if (player_timeout_ms <= 0)
+                        continue; /* sin timeout: seguimos esperando */
+                    /* timeout individual: contabilizamos y seguimos con el siguiente jugador */
+                    state_write_begin();
+                    G->P[i].timeouts += 1;
+                    state_write_end();
+                    if (plogfd[i] != -1) dprintf(plogfd[i], "TIMEOUT\n");
+                    if (has_view) { view_signal_update_ready(); view_wait_render_complete(); }
+                    msleep_int(cfg.delay);
+                    break;
+                }
 
-            int rv = select(maxfd + 1, &rfds, NULL, NULL, &tv);
-            if (rv < 0)
-            {
-                if (errno == EINTR)
-                    continue;
-                perror("select");
-                break;
-            }
-            if (rv == 0)
-            { /* poll timeout */
-                goto collect_children_inner;
-            }
-
-            for (unsigned k = 0; k < N; ++k)
-            {
-                unsigned i = (rr_start + k) % N;
-                if (!alive[i] || took_turn[i] || blocked[i])
-                    continue;
-                if (!FD_ISSET(rfd[i], &rfds))
-                    continue;
-
+                /* hay datos listos */
                 uint8_t mv;
                 ssize_t n = read(rfd[i], &mv, 1);
                 if (n == 1)
                 {
-                    took_turn[i] = 1;
+                    got_event = 1;
                     int gain = 0;
-
-                    /* registrar movimiento bruto en el log del player para diagnóstico */
                     if (plogfd[i] != -1)
-                    {
                         dprintf(plogfd[i], "mv=%u\n", (unsigned)mv);
-                        /* flush implícito por dprintf */
-                    }
 
                     state_write_begin();
                     if (mv == 0xFF)
-                    { /* PASS sentinel: jugador sin movimientos disponibles */
+                    {
                         blocked[i] = 1;
                         G->P[i].blocked = 1;
                         printf("[round %d] player %u PASS -> BLOCKED\n", rounds, i);
@@ -465,16 +444,13 @@ int main(int argc, char *argv[])
                             printf("[round %d] player %u INVALID dir=%u (invalids=%u)\n",
                                    rounds, i, (unsigned)mv, G->P[i].invalids);
                         }
-
                         blocked[i] = !player_can_move(G, (int)i);
                         G->P[i].blocked = blocked[i];
                         if (blocked[i])
                             printf("player %u BLOCKED (no moves)\n", i);
                     }
                     state_write_end();
-                    progress_this_round = 1;
 
-                    /* tras cualquier cambio en el estado, notificar a la vista y esperar; luego delay */
                     if (has_view)
                     {
                         view_signal_update_ready();
@@ -484,57 +460,45 @@ int main(int argc, char *argv[])
                 }
                 else if (n == 0)
                 {
+                    got_event = 1;
                     alive[i] = 0;
                     close(rfd[i]);
-                    if (plogfd[i] != -1)
-                        dprintf(plogfd[i], "EOF\n");
+                    if (plogfd[i] != -1) dprintf(plogfd[i], "EOF\n");
                     printf("player %u EOF\n", i);
-                    progress_this_round = 1;
+                    if (has_view) { view_signal_update_ready(); view_wait_render_complete(); }
+                    msleep_int(cfg.delay);
                 }
                 else
                 {
+                    if (errno == EINTR) continue;
                     if (errno != EAGAIN && errno != EWOULDBLOCK)
                     {
+                        got_event = 1;
                         perror("read");
                         alive[i] = 0;
                         close(rfd[i]);
-                        if (plogfd[i] != -1)
-                            dprintf(plogfd[i], "ERROR read errno=%d\n", errno);
-                        progress_this_round = 1;
+                        if (plogfd[i] != -1) dprintf(plogfd[i], "ERROR read errno=%d\n", errno);
+                        if (has_view) { view_signal_update_ready(); view_wait_render_complete(); }
+                        msleep_int(cfg.delay);
                     }
                 }
-            }
 
-        collect_children_inner:
-            for (unsigned i = 0; i < N; ++i)
-            {
-                if (!alive[i])
+                if (player_timeout_ms > 0)
                 {
-                    int status;
-                    (void)waitpid(pids[i], &status, WNOHANG);
+                    struct timespec t1; clock_gettime(CLOCK_MONOTONIC, &t1);
+                    long spent = (t1.tv_sec - t0.tv_sec) * 1000L + (t1.tv_nsec - t0.tv_nsec) / 1000000L;
+                    if (spent > 0 && remaining_ms > 0)
+                        remaining_ms = remaining_ms > (int)spent ? remaining_ms - (int)spent : 0;
                 }
             }
-            /* watchdog de ronda: si pasan 5000ms sin progreso forzamos cierre */
-            if (!progress_this_round)
-            {
-                long elapsed_ms2 = ms_since(&t_round0);
-                if (elapsed_ms2 > 5000)
-                {
-                    fprintf(stderr, "watchdog: forcing end of round after %ld ms without progress\n", elapsed_ms2);
-                    break;
-                }
-            }
-        } /* fin loop interno */
+        }
 
-        /* vista al final de ronda (sin delay), útil si no hubo cambios */
+        /* vista al final de ronda (sin delay), útil si no hubo cambios dentro de la ronda */
         if (has_view)
         {
             view_signal_update_ready();
             view_wait_render_complete();
         }
-
-        /* preparar próxima ronda */
-        memset(took_turn, 0, sizeof(took_turn));
 
         int all_blocked2 = 1;
         for (unsigned i = 0; i < N; ++i)
@@ -556,12 +520,9 @@ int main(int argc, char *argv[])
             break;
         }
 
-        for (unsigned i = 0; i < N; ++i)
-            if (alive[i] && !blocked[i])
-                player_signal_turn((int)i);
-
-        /* rotar inicio de RR para evitar sesgo */
-        rr_start = (rr_start + 1) % N;
+    /* ya no señalizamos masivamente; los turnos se otorgan secuencialmente */
+    /* Nota: no rotamos rr_start para evitar que el mismo jugador
+     * termine una ronda y empiece la siguiente (movimientos consecutivos). */
     }
 
     /* fin del juego */
