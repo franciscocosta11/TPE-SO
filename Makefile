@@ -55,7 +55,7 @@ test:
 > $(MAKE) -C $(CUTEST_DIR) test
 
 clean:
-> rm -f master view player reader_stress writer_tick $(OBJ_COMMON)
+> rm -f master view player view_ncurses reader_stress writer_tick $(OBJ_COMMON) src/master/*.o
 > $(MAKE) -C $(CUTEST_DIR) clean
 
 .PHONY: all clean cutest test stress

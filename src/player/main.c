@@ -7,15 +7,12 @@
 #include <stdlib.h>
 #include <time.h>
 #include <stdbool.h>
-#include <sys/mman.h> // For PROT_READ
-
+#include <sys/mman.h>
 #include "shm.h"
 #include "state.h"
 #include "state_access.h"
 #include "sync.h"
-
-// Ensure Dir type is defined or included
-#include "rules.h" // Assuming Dir is defined here; adjust if needed
+#include "rules.h"
 
 #define MAX_INIT_TRIES 200           // Maximum number of attempts to find self in game state
 #define INIT_POLL_DELAY_MS 50        // Delay between init attempts in milliseconds
@@ -32,33 +29,97 @@ static int find_self_index(const GameState *G, pid_t me)
     return -1;
 }
 
+static void parse_dims(int argc, char *argv[], unsigned *w, unsigned *h)
+{
+    *w = 0; *h = 0;
+    if (argc >= 3)
+    {
+        *w = (unsigned)strtoul(argv[1], NULL, 10);
+        *h = (unsigned)strtoul(argv[2], NULL, 10);
+    }
+}
+
+static int wait_for_turn_or_end(GameState *G, int my)
+{
+    for (;;)
+    {
+        int r = player_wait_turn_timed(my, TURN_WAIT_TIMEOUT_MS);
+        if (r == 1)
+            return 1;
+        if (r < 0)
+            return 0;
+        state_read_begin();
+        bool over = G->game_over;
+        bool b = G->P[my].blocked;
+        state_read_end();
+        if (over || b)
+            return 0;
+    }
+}
+
+static int choose_best_move(GameState *G, int my, uint8_t *out_dir)
+{
+    int best_gain = -1;
+    uint8_t best_dir = 0;
+    for (int d = 0; d < 8; ++d)
+    {
+        int gain = 0;
+        if (rules_validate(G, my, (Dir)d, &gain))
+        {
+            if (gain > best_gain)
+            {
+                best_gain = gain;
+                best_dir = (uint8_t)d;
+            }
+        }
+    }
+    if (best_gain >= 0)
+    {
+        *out_dir = best_dir;
+        return 1;
+    }
+    return 0;
+}
+
+static void send_pass_and_wait(GameState *G, int my)
+{
+    uint8_t pass = PASS_SENTINEL;
+    ssize_t wr = write(1, &pass, 1);
+    (void)wr;
+    for (;;)
+    {
+        state_read_begin();
+        bool over = G->game_over;
+        bool b = G->P[my].blocked;
+        state_read_end();
+        if (over || b)
+            break;
+        struct timespec ts = {.tv_sec = 0, .tv_nsec = POLL_DELAY_MS * NANOSEC_PER_MS};
+        nanosleep(&ts, NULL);
+    }
+}
+
 int main(int argc, char *argv[])
 {
     setvbuf(stdout, NULL, _IONBF, 0);
 
-    GameState *G = state_attach(); // REVISAR ACCESO A MEM
+    GameState *G = state_attach();
     if (!G)
         return 1;
     if (sync_attach() != 0)
         return 1;
 
-    unsigned argW = 0, argH = 0;
-    if (argc >= 3)
-    {
-        argW = (unsigned)strtoul(argv[1], NULL, 10);
-        argH = (unsigned)strtoul(argv[2], NULL, 10);
-    }
+    unsigned argW, argH;
+    parse_dims(argc, argv, &argW, &argH);
 
     pid_t me = getpid();
     int my = -1;
 
-    /* Esperar a que el master setee mi PID en el estado */
     for (int tries = 0; tries < MAX_INIT_TRIES && my < 0; ++tries)
     {
         state_read_begin();
         my = find_self_index(G, me);
         bool over = G->game_over;
-        /* Advertir una única vez si el tamaño indicado por argv difiere del SHM */
         static int warned_size = 0;
         if (!warned_size && argW && argH && (G->w != argW || G->h != argH))
         {
@@ -80,38 +141,9 @@ int main(int argc, char *argv[])
 
     while (1)
     {
-        /* Esperar turno con polling suave para poder salir si termina el juego */
-        int got_turn = 0;
-        for (;;)
-        {
-            int r = player_wait_turn_timed(my, TURN_WAIT_TIMEOUT_MS);
-            if (r == 1)
-            {
-                got_turn = 1;
-                break;
-            }
-            if (r < 0)
-            { /* error raro */
-                break;
-            }
-            /* r==0: timeout corto, revisar si terminó el juego */
-            state_read_begin();
-            bool over = G->game_over;
-            bool b = G->P[my].blocked;
-            state_read_end();
-            if (over || b)
-            {
-                got_turn = 0;
-                break;
-            }
-        }
+        int got_turn = wait_for_turn_or_end(G, my);
         if (!got_turn)
             break; /* juego terminó o me bloquearon */
-
-        /* Elegir un movimiento legal y con mayor recompensa adyacente */
-        uint8_t best_dir = 0;
-        int best_gain = -1;
-        int can_play = 0;
 
         state_read_begin();
         if (G->game_over || G->P[my].blocked)
@@ -119,19 +151,8 @@ int main(int argc, char *argv[])
             state_read_end();
             break;
         }
-        for (int d = 0; d < 8; ++d) // MAGIC NUMBER
-        {
-            int gain = 0;
-            if (rules_validate(G, my, (Dir)d, &gain))
-            {
-                can_play = 1;
-                if (gain > best_gain)
-                {
-                    best_gain = gain;
-                    best_dir = (uint8_t)d;
-                }
-            }
-        }
+        uint8_t best_dir = 0;
+        int can_play = choose_best_move(G, my, &best_dir);
         state_read_end();
 
         if (can_play)
@@ -141,22 +162,7 @@ int main(int argc, char *argv[])
         }
         else
         {
-            /* No tengo jugada legal: envío PASS sentinel y espero a que el master me marque bloqueo o termine */
-            uint8_t pass = PASS_SENTINEL;
-            ssize_t wpass = write(1, &pass, 1);
-            (void)wpass;
-            /* esperar polling corto hasta que game_over o blocked */
-            for (;;)
-            {
-                state_read_begin();
-                bool over = G->game_over;
-                bool b = G->P[my].blocked;
-                state_read_end();
-                if (over || b)
-                    break;
-                struct timespec ts = {.tv_sec = 0, .tv_nsec = POLL_DELAY_MS * NANOSEC_PER_MS};
-                nanosleep(&ts, NULL);
-            }
+            send_pass_and_wait(G, my);
             break;
         }
     }

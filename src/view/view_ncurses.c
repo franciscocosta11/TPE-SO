@@ -361,8 +361,7 @@ int main(int argc, char *argv[])
     int quit_requested = 0;
     while (!g_should_exit && frame < 2000)
     {
-        view_wait_update_ready();
-        rdlock();
+    view_wait_update_ready();
 
         /* Validación opcional de tamaños si vinieron por argv */
         if (argW && argH && (G->w != argW || G->h != argH))
@@ -423,8 +422,7 @@ int main(int argc, char *argv[])
         mvprintw(max_y - 1, 0, "Frame: %d | Press 'q' to quit", frame);
         safe_attroff(COLOR_UI + 0, false, false);
 
-        int game_over_now = G->game_over ? 1 : 0;
-        rdunlock();
+    int game_over_now = G->game_over ? 1 : 0;
 
         // Actualizar pantalla
         refresh();
