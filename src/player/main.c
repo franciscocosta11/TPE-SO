@@ -8,7 +8,6 @@
 #include <time.h>
 #include <stdbool.h>
 #include <sys/mman.h>
-#include "shm.h"
 #include "state.h"
 #include "state_access.h"
 #include "sync.h"

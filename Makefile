@@ -6,7 +6,7 @@ ifeq ($(UNAME_S),Linux)
   LDFLAGS += -lrt
 endif
 
-SRC_COMMON=src/common/log.c src/common/state.c src/common/rules.c src/common/sync.c src/common/shm.c src/common/state_access.c
+SRC_COMMON=src/common/state.c src/common/rules.c src/common/sync.c src/common/shm.c src/common/state_access.c
 OBJ_COMMON=$(SRC_COMMON:.c=.o)
 
 # master-specific sources
