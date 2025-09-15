@@ -1,7 +1,7 @@
 // This is a personal academic project. Dear PVS-Studio, please check it.
 // PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 #include "rules.h"
-#define DIRECTIONS 8
+#define DIRECTIONS 8 
 
 static void dir_delta(Dir d, int *dx, int *dy) {
     static const int DX[DIRECTIONS] = { 0, 1, 1, 1, 0,-1,-1,-1 };
@@ -10,7 +10,7 @@ static void dir_delta(Dir d, int *dx, int *dy) {
 }
 
 int rules_validate(const GameState *g, int pid, Dir d, int *gain) {
-    /* entradas válidas */
+    // entradas validas
     if (!g) return 0;
     if (pid < 0 || (unsigned)pid >= g->n_players) return 0;
     if ((int)d < 0 || (int)d > 7) return 0; /* validar dirección */
@@ -24,12 +24,12 @@ int rules_validate(const GameState *g, int pid, Dir d, int *gain) {
 
     int v = g->board[idx(g, (unsigned)x, (unsigned)y)];
 
-    /* comprobar owner primero */
+    // chequeo que no este capturada por nadie
     if (cell_owner(v) != -1) return 0;  // ya capturada por alguien
 
-    /* comprobar reward en rango esperado (0..9) */
+    // ya se que no es un player, ahora me fijo si es un valor en el rango aceptado [1,9]
     int r = cell_reward(v);
-    if ( r > 9) return 0; /* valor corrupto en el tablero */
+    if ( r > 9) return 0; 
 
     if (gain) *gain = r;   /* 0..9 */
     return 1;

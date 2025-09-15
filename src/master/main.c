@@ -42,14 +42,15 @@ static long ms_since(const struct timespec *t0)
 /* sleep en milisegundos */
 static void msleep_int(int ms)
 {
-    if (ms <= 0) return;
+    if (ms <= 0)
+        return;
     struct timespec ts;
     ts.tv_sec = ms / 1000;
     ts.tv_nsec = (long)(ms % 1000) * 1000000L;
     nanosleep(&ts, NULL);
 }
 
-/* --- ranking final --- */
+// ranking final
 static void print_ranking(const GameState *G)
 {
     /* copiar índices [0..n-1] y ordenar por score desc */
@@ -65,9 +66,9 @@ static void print_ranking(const GameState *G)
         {
             if (G->P[idxs[b]].score > G->P[idxs[a]].score)
             {
-                unsigned tmp = idxs[a];
+                unsigned aux = idxs[a];
                 idxs[a] = idxs[b];
-                idxs[b] = tmp;
+                idxs[b] = aux;
             }
         }
     }
@@ -84,7 +85,6 @@ static void print_ranking(const GameState *G)
     printf("=====================\n");
 }
 
-/* --- spawners --- */
 static int spawn_player(const char *path, int pipefd[2], unsigned W, unsigned H)
 {
     if (pipe(pipefd) == -1)
@@ -100,7 +100,7 @@ static int spawn_player(const char *path, int pipefd[2], unsigned W, unsigned H)
     }
     if (pid == 0)
     {
-        /* Mantener stdout hacia el pipe (master lee movimientos). */
+        /* Mantener stdout hacia el pipe */
         if (dup2(pipefd[1], 1) == -1)
         {
             perror("dup2");
@@ -118,10 +118,10 @@ static int spawn_player(const char *path, int pipefd[2], unsigned W, unsigned H)
         }
         close(pipefd[0]);
         close(pipefd[1]);
-    char wbuf[16], hbuf[16];
-    snprintf(wbuf, sizeof(wbuf), "%u", W);
-    snprintf(hbuf, sizeof(hbuf), "%u", H);
-    execl(path, path, wbuf, hbuf, (char *)NULL);
+        char wbuf[16], hbuf[16];
+        snprintf(wbuf, sizeof(wbuf), "%u", W);
+        snprintf(hbuf, sizeof(hbuf), "%u", H);
+        execl(path, path, wbuf, hbuf, (char *)NULL);
         perror("execl");
         _exit(127);
     }
@@ -146,15 +146,13 @@ static pid_t spawn_view(const char *path, unsigned W, unsigned H)
         int lf = open(logpath, O_CREAT | O_WRONLY | O_APPEND, 0644);
         if (lf != -1)
         {
-            /* No redirigimos stdout: permitimos que la view use el terminal
-             * para ncurses. Solo redirigimos stderr al log por si hay errores. */
             (void)dup2(lf, 2);
             close(lf);
         }
-    char wbuf[16], hbuf[16];
-    snprintf(wbuf, sizeof(wbuf), "%u", W);
-    snprintf(hbuf, sizeof(hbuf), "%u", H);
-    execl(path, path, wbuf, hbuf, (char *)NULL);
+        char wbuf[16], hbuf[16];
+        snprintf(wbuf, sizeof(wbuf), "%u", W);
+        snprintf(hbuf, sizeof(hbuf), "%u", H);
+        execl(path, path, wbuf, hbuf, (char *)NULL);
         perror("execl");
         _exit(127);
     }
@@ -163,10 +161,10 @@ static pid_t spawn_view(const char *path, unsigned W, unsigned H)
 
 int main(int argc, char *argv[])
 {
-    /* Asegurar existencia de carpeta para logs de procesos */
+    // tests de valgrind 
     (void)mkdir("./logs", 0755);
 
-    /* señales */
+    // señales
     struct sigaction sa = {0};
     sa.sa_handler = on_signal;
     sigemptyset(&sa.sa_mask);
@@ -198,7 +196,6 @@ int main(int argc, char *argv[])
     const char *default_player_path = "./player";
 
     /* SHMs */
-    // size_t GSIZE = state_size(W, H);
     GameState *G = (GameState *)state_create(W, H);
     if (!G)
     {
@@ -248,10 +245,9 @@ int main(int argc, char *argv[])
         int pf[2];
         const char *pp = (cfg.player_paths[i] && cfg.player_paths[i][0]) ? cfg.player_paths[i]
                                                                          : default_player_path;
-    pids[i] = spawn_player(pp, pf, W, H);
+        pids[i] = spawn_player(pp, pf, W, H);
         rfd[i] = pf[0];
         alive[i] = 1;
-    /* turnos se manejan secuencialmente, no necesitamos took_turn */
         /* abrir descriptor para que el master pueda anotar los bytes recibidos en el log del player */
         char logpath[256];
         snprintf(logpath, sizeof(logpath), "./logs/player-%d.log", (int)pids[i]);
@@ -277,8 +273,6 @@ int main(int argc, char *argv[])
     /* frame inicial (si hay vista) */
     if (has_view)
         view_signal_update_ready();
-    /* Nota: ya no señalizamos a todos los jugadores. El master ahora
-     * otorga turnos de forma estrictamente secuencial por jugador. */
 
     int rounds = 0;
     const int MAX_ROUNDS = 200;
@@ -303,7 +297,7 @@ int main(int argc, char *argv[])
         if (!any_alive)
             break;
 
-        /* Re-sincronizar array local blocked[] con el estado compartido para evitar drift */
+        /* Re-sincronizar array local blocked[] con el estado compartido */
         state_read_begin();
         for (unsigned i = 0; i < N; ++i)
         {
@@ -330,8 +324,6 @@ int main(int argc, char *argv[])
         int valid_timeout_ms = (cfg.timeout > 0) ? cfg.timeout : 0;
         int player_timeout_ms = (cfg.player_timeout_ms > 0) ? cfg.player_timeout_ms : 0;
 
-        /* una ronda = exactamente un intento de turno por jugador vivo no bloqueado,
-         * en orden round-robin, con semáforo por jugador. */
         for (unsigned k = 0; k < N && !stop_flag; ++k)
         {
             unsigned i = (rr_start + k) % N;
@@ -381,7 +373,8 @@ int main(int argc, char *argv[])
                 }
                 else
                 {
-                    tv.tv_sec = 0; tv.tv_usec = 0;
+                    tv.tv_sec = 0;
+                    tv.tv_usec = 0;
                 }
                 struct timespec t0;
                 clock_gettime(CLOCK_MONOTONIC, &t0);
@@ -404,8 +397,13 @@ int main(int argc, char *argv[])
                     state_write_begin();
                     G->P[i].timeouts += 1;
                     state_write_end();
-                    if (plogfd[i] != -1) dprintf(plogfd[i], "TIMEOUT\n");
-                    if (has_view) { view_signal_update_ready(); view_wait_render_complete(); }
+                    if (plogfd[i] != -1)
+                        dprintf(plogfd[i], "TIMEOUT\n");
+                    if (has_view)
+                    {
+                        view_signal_update_ready();
+                        view_wait_render_complete();
+                    }
                     msleep_int(cfg.delay);
                     break;
                 }
@@ -463,29 +461,41 @@ int main(int argc, char *argv[])
                     got_event = 1;
                     alive[i] = 0;
                     close(rfd[i]);
-                    if (plogfd[i] != -1) dprintf(plogfd[i], "EOF\n");
+                    if (plogfd[i] != -1)
+                        dprintf(plogfd[i], "EOF\n");
                     printf("player %u EOF\n", i);
-                    if (has_view) { view_signal_update_ready(); view_wait_render_complete(); }
+                    if (has_view)
+                    {
+                        view_signal_update_ready();
+                        view_wait_render_complete();
+                    }
                     msleep_int(cfg.delay);
                 }
                 else
                 {
-                    if (errno == EINTR) continue;
+                    if (errno == EINTR)
+                        continue;
                     if (errno != EAGAIN && errno != EWOULDBLOCK)
                     {
                         got_event = 1;
                         perror("read");
                         alive[i] = 0;
                         close(rfd[i]);
-                        if (plogfd[i] != -1) dprintf(plogfd[i], "ERROR read errno=%d\n", errno);
-                        if (has_view) { view_signal_update_ready(); view_wait_render_complete(); }
+                        if (plogfd[i] != -1)
+                            dprintf(plogfd[i], "ERROR read errno=%d\n", errno);
+                        if (has_view)
+                        {
+                            view_signal_update_ready();
+                            view_wait_render_complete();
+                        }
                         msleep_int(cfg.delay);
                     }
                 }
 
                 if (player_timeout_ms > 0)
                 {
-                    struct timespec t1; clock_gettime(CLOCK_MONOTONIC, &t1);
+                    struct timespec t1;
+                    clock_gettime(CLOCK_MONOTONIC, &t1);
                     long spent = (t1.tv_sec - t0.tv_sec) * 1000L + (t1.tv_nsec - t0.tv_nsec) / 1000000L;
                     if (spent > 0 && remaining_ms > 0)
                         remaining_ms = remaining_ms > (int)spent ? remaining_ms - (int)spent : 0;
@@ -493,7 +503,6 @@ int main(int argc, char *argv[])
             }
         }
 
-        /* vista al final de ronda (sin delay), útil si no hubo cambios dentro de la ronda */
         if (has_view)
         {
             view_signal_update_ready();
@@ -519,10 +528,6 @@ int main(int argc, char *argv[])
             printf("max rounds reached\n");
             break;
         }
-
-    /* ya no señalizamos masivamente; los turnos se otorgan secuencialmente */
-    /* Nota: no rotamos rr_start para evitar que el mismo jugador
-     * termine una ronda y empiece la siguiente (movimientos consecutivos). */
     }
 
     /* fin del juego */
@@ -532,7 +537,7 @@ int main(int argc, char *argv[])
 
     if (has_view)
         view_signal_update_ready();
-    // no esperamos render aquí
+    // no esperamos render
 
     for (unsigned i = 0; i < N; ++i)
         if (pids[i] > 0)
@@ -549,7 +554,8 @@ int main(int argc, char *argv[])
             /* imprimir causa y puntaje */
             unsigned score = 0;
             state_read_begin();
-            if (i < G->n_players) score = G->P[i].score;
+            if (i < G->n_players)
+                score = G->P[i].score;
             state_read_end();
             if (exited)
                 printf("player %u exited code=%d score=%u\n", i, code, score);

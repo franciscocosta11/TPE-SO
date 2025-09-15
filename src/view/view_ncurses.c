@@ -23,6 +23,8 @@
 // Colores para los jugadores
 #define COLOR_PLAYER_BASE 10
 #define COLOR_PLAYER_CURRENT (COLOR_PLAYER_BASE + 20)
+#define COLOR_PLAYER_HEAD_HI (COLOR_PLAYER_BASE + 40)
+#define COLOR_PLAYER_HEAD_FG 60
 #define COLOR_REWARD 20
 #define COLOR_UI 30
 #define CELL_HEIGHT 3
@@ -85,7 +87,7 @@ static void init_colors(void)
         start_color();
         use_default_colors();
 
-        // Players
+    // Players
         init_pair(COLOR_PLAYER_BASE + 0, COLOR_WHITE, COLOR_RED);
         init_pair(COLOR_PLAYER_BASE + 1, COLOR_WHITE, COLOR_GREEN);
         init_pair(COLOR_PLAYER_BASE + 2, COLOR_WHITE, COLOR_YELLOW);
@@ -94,7 +96,7 @@ static void init_colors(void)
         init_pair(COLOR_PLAYER_BASE + 5, COLOR_WHITE, COLOR_CYAN);
         init_pair(COLOR_PLAYER_BASE + 6, COLOR_WHITE, COLOR_RED);
         init_pair(COLOR_PLAYER_BASE + 7, COLOR_WHITE, COLOR_GREEN);
-        // Colores especiales para la cabeza: letra del color del jugador sobre su propio fondo
+    // Colores especiales para la cabeza (jugadores 0..4): letra del color del jugador sobre su propio fondo
         init_pair(COLOR_PLAYER_BASE + 20, COLOR_RED, COLOR_RED);         // cabeza rojo (A)
         init_pair(COLOR_PLAYER_BASE + 21, COLOR_GREEN, COLOR_GREEN);     // cabeza verde (B)
         init_pair(COLOR_PLAYER_BASE + 22, COLOR_YELLOW, COLOR_YELLOW);   // cabeza amarillo (C)
@@ -103,6 +105,27 @@ static void init_colors(void)
         init_pair(COLOR_PLAYER_BASE + 25, COLOR_CYAN, COLOR_CYAN);       // cabeza cian (F)
         init_pair(COLOR_PLAYER_BASE + 26, COLOR_RED, COLOR_RED);         // cabeza rojo (G)
         init_pair(COLOR_PLAYER_BASE + 27, COLOR_GREEN, COLOR_GREEN);     // cabeza verde (H)
+
+    // Colores de alto contraste para cabezas de jugadores 5 en adelante (>=5)
+    // Usamos foreground negro sobre el mismo fondo que el cuerpo para mayor contraste.
+    init_pair(COLOR_PLAYER_HEAD_HI + 0, COLOR_BLACK, COLOR_RED);
+    init_pair(COLOR_PLAYER_HEAD_HI + 1, COLOR_BLACK, COLOR_GREEN);
+    init_pair(COLOR_PLAYER_HEAD_HI + 2, COLOR_BLACK, COLOR_YELLOW);
+    init_pair(COLOR_PLAYER_HEAD_HI + 3, COLOR_BLACK, COLOR_BLUE);
+    init_pair(COLOR_PLAYER_HEAD_HI + 4, COLOR_BLACK, COLOR_MAGENTA);
+    init_pair(COLOR_PLAYER_HEAD_HI + 5, COLOR_BLACK, COLOR_CYAN);
+    init_pair(COLOR_PLAYER_HEAD_HI + 6, COLOR_BLACK, COLOR_RED);
+    init_pair(COLOR_PLAYER_HEAD_HI + 7, COLOR_BLACK, COLOR_GREEN);
+
+        // Cabeza: solo foreground (fondo por defecto)
+        init_pair(COLOR_PLAYER_HEAD_FG + 0, COLOR_RED,   -1);
+        init_pair(COLOR_PLAYER_HEAD_FG + 1, COLOR_GREEN, -1);
+        init_pair(COLOR_PLAYER_HEAD_FG + 2, COLOR_YELLOW,-1);
+        init_pair(COLOR_PLAYER_HEAD_FG + 3, COLOR_BLUE,  -1);
+        init_pair(COLOR_PLAYER_HEAD_FG + 4, COLOR_MAGENTA,-1);
+        init_pair(COLOR_PLAYER_HEAD_FG + 5, COLOR_CYAN,  -1);
+        init_pair(COLOR_PLAYER_HEAD_FG + 6, COLOR_RED,   -1);
+        init_pair(COLOR_PLAYER_HEAD_FG + 7, COLOR_GREEN, -1);
 
         // UI
         init_pair(COLOR_UI + 0, COLOR_WHITE, COLOR_BLACK); // bordes en blanco
@@ -175,7 +198,14 @@ static void draw_board(GameState *G, int start_y, int start_x)
             if (owner >= 0)
             {
                 is_owned = true;
-                color_pair_id = (is_current_pos ? COLOR_PLAYER_CURRENT : COLOR_PLAYER_BASE) + (owner % 8);
+                if (is_current_pos) {
+                    if (owner >= 5)
+                        color_pair_id = COLOR_PLAYER_HEAD_HI + (owner % 8);
+                    else
+                        color_pair_id = COLOR_PLAYER_CURRENT + (owner % 8);
+                } else {
+                    color_pair_id = COLOR_PLAYER_BASE + (owner % 8);
+                }
                 content_char = (char)('A' + owner);
             }
             else
@@ -187,26 +217,41 @@ static void draw_board(GameState *G, int start_y, int start_x)
                 content_char = (char)('0' + r);
             }
 
-            // Relleno interno
-            safe_attron(color_pair_id, false, false);
-            for (int inner_y = 1; inner_y < CELL_HEIGHT; ++inner_y)
-            {
-                for (int inner_x = 1; inner_x < CELL_WIDTH; ++inner_x)
+            // Relleno interno (no colorear si es cabeza: sin fondo)
+            if (!(is_owned && is_current_pos)) {
+                safe_attron(color_pair_id, false, false);
+                for (int inner_y = 1; inner_y < CELL_HEIGHT; ++inner_y)
                 {
-                    mvaddch(cell_start_y + inner_y, cell_start_x + inner_x, ' ');
+                    for (int inner_x = 1; inner_x < CELL_WIDTH; ++inner_x)
+                    {
+                        mvaddch(cell_start_y + inner_y, cell_start_x + inner_x, ' ');
+                    }
+                }
+                safe_attroff(color_pair_id, false, false);
+            } else {
+                // limpiar con fondo por defecto
+                for (int inner_y = 1; inner_y < CELL_HEIGHT; ++inner_y)
+                {
+                    for (int inner_x = 1; inner_x < CELL_WIDTH; ++inner_x)
+                    {
+                        mvaddch(cell_start_y + inner_y, cell_start_x + inner_x, ' ');
+                    }
                 }
             }
-            safe_attroff(color_pair_id, false, false);
 
             // Contenido centrado
-            if (is_owned)
-                safe_attron(color_pair_id, true, false);
-            else
-                safe_attron(color_pair_id, false, false);
-
-            mvaddch(cell_start_y + (CELL_HEIGHT / 2),
-                    cell_start_x + (CELL_WIDTH / 2), content_char);
-            safe_attroff(color_pair_id, true, false);
+            if (is_owned && is_current_pos) {
+                int head_pair = COLOR_PLAYER_HEAD_FG + (owner % 8);
+                safe_attron(head_pair, true, false);
+                mvaddch(cell_start_y + (CELL_HEIGHT / 2),
+                        cell_start_x + (CELL_WIDTH / 2), content_char);
+                safe_attroff(head_pair, true, false);
+            } else {
+                safe_attron(color_pair_id, is_owned, false);
+                mvaddch(cell_start_y + (CELL_HEIGHT / 2),
+                        cell_start_x + (CELL_WIDTH / 2), content_char);
+                safe_attroff(color_pair_id, is_owned, false);
+            }
 
             // Bordes
             safe_attron(COLOR_UI + 0, false, false);

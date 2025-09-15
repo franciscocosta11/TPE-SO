@@ -30,7 +30,7 @@ void state_zero(GameState *g, unsigned w, unsigned h, unsigned n_players) {
         p->score = 0;
         p->valids = 0;
         p->invalids = 0;
-        p->timeouts = 0;         /* NUEVO */
+        p->timeouts = 0;         
         p->x = 0;
         p->y = 0;
         p->pid = 0;

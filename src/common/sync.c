@@ -105,7 +105,6 @@ void sync_destroy(void)
     S = NULL;
 }
 
-/* Lector-Escritor con prioridad para el escritor */
 
 void rdlock(void)
 {

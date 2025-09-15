@@ -15,13 +15,13 @@ static void print_usage(const char *prog) {
         "[-w width] [-h height] "
         "[-d delay_ms] [-t timeout_s] "
         "[-s seed] [-v ./view] "
-        "-p player1 [player2 ...]\n\n"
+    "-p player\n\n"
         "Notas:\n"
         "- width/height: mínimo 10 (default 10).\n"
         "- d: delay entre impresiones en ms (default 200).\n"
         "- t: timeout para movimientos válidos en segundos (default 10s).\n"
         "- v: ruta de la vista (por ejemplo ./view_ncurses).\n"
-        "- p: entre 1 y 9 jugadores.\n",
+    "- p: entre 1 y 9 jugadores, ejecutables permitidos: 'player'.\n",
         prog);
 }
 
@@ -91,5 +91,20 @@ int parse_args(int argc, char *argv[], MasterConfig *config)
     if (config->delay < 0) config->delay = 0;
     if (config->timeout < 0) config->timeout = 0;
     if (config->player_timeout_ms < 0) config->player_timeout_ms = 0;
+
+    /* Validar que los ejecutables de players sea 'player' */
+    for (int i = 0; i < config->player_count; ++i) {
+        const char *p = config->player_paths[i];
+        if (!p || !*p) {
+            fprintf(stderr, "Error: path de jugador vacío en posición %d.\n", i);
+            return -1;
+        }
+        const char *slash = strrchr(p, '/');
+        const char *base = slash ? slash + 1 : p;
+        if (strcmp(base, "player") != 0 ) {
+            fprintf(stderr, "Error: ejecutable de jugador inválido '%s' (permitidos: 'player')\n", p);
+            return -1;
+        }
+    }
     return 0;
 }
