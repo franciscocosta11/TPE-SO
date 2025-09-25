@@ -21,7 +21,7 @@ static void print_usage(const char *prog) {
         "- d: delay entre impresiones en ms (default 200).\n"
         "- t: timeout para movimientos válidos en segundos (default 10s).\n"
         "- v: ruta de la vista (por ejemplo ./view_ncurses).\n"
-    "- p: entre 1 y 9 jugadores, ejecutables permitidos: 'player'.\n",
+    "- p: entre 1 y 9 jugadores, ejecutables permitidos: 'player' o 'player2'.\n",
         prog);
 }
 
@@ -92,7 +92,7 @@ int parse_args(int argc, char *argv[], MasterConfig *config)
     if (config->timeout < 0) config->timeout = 0;
     if (config->player_timeout_ms < 0) config->player_timeout_ms = 0;
 
-    /* Validar que los ejecutables de players sea 'player' */
+    /* Validar que los ejecutables de players sean 'player' o 'player2' */
     for (int i = 0; i < config->player_count; ++i) {
         const char *p = config->player_paths[i];
         if (!p || !*p) {
@@ -101,8 +101,8 @@ int parse_args(int argc, char *argv[], MasterConfig *config)
         }
         const char *slash = strrchr(p, '/');
         const char *base = slash ? slash + 1 : p;
-        if (strcmp(base, "player") != 0 ) {
-            fprintf(stderr, "Error: ejecutable de jugador inválido '%s' (permitidos: 'player')\n", p);
+        if (strcmp(base, "player") != 0 && strcmp(base, "player2") != 0) {
+            fprintf(stderr, "Error: ejecutable de jugador inválido '%s' (permitidos: 'player', 'player2')\n", p);
             return -1;
         }
     }

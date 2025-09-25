@@ -17,19 +17,6 @@
 #define NANOSEC_PER_SEC 1000000000L
 
 static SyncMem *S = NULL;
-// static int sync_fd = -1;
-
-// static int map_sync(int oflags, mode_t mode, int create) {
-//     sync_fd = shm_open(SHM_GAME_SYNC, oflags, mode);
-//     if (sync_fd == -1) { perror("shm_open(/game_sync)"); return -1; }
-//     if (create) {
-//         if (ftruncate(sync_fd, (off_t)sizeof(SyncMem)) == -1) { perror("ftruncate"); return -1; }
-//     }
-//     void *p = mmap(NULL, sizeof(SyncMem), PROT_READ|PROT_WRITE, MAP_SHARED, sync_fd, 0);
-//     if (p == MAP_FAILED) { perror("mmap(/game_sync)"); return -1; }
-//     S = (SyncMem*)p;
-//     return 0;
-// }
 
 int sync_create(void)
 {

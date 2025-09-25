@@ -21,6 +21,7 @@
 #include "sync.h"
 #include "master_logic.h"
 #include "rules.h"
+#include "shm.h"
 
 /* --- señales --- */
 static volatile sig_atomic_t stop_flag = 0;
@@ -48,6 +49,25 @@ static void msleep_int(int ms)
     ts.tv_sec = ms / 1000;
     ts.tv_nsec = (long)(ms % 1000) * 1000000L;
     nanosleep(&ts, NULL);
+}
+
+/* marcar un descriptor como close-on-exec para que no lo hereden futuros exec */
+static void set_cloexec(int fd)
+{
+    if (fd < 0) return;
+    int flags = fcntl(fd, F_GETFD);
+    if (flags == -1) return;
+    (void)fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+}
+
+/* cerrar todos los FDs >=3 para que el hijo no herede nada extra */
+static void close_fds_except_stdio(void)
+{
+    long maxfd = sysconf(_SC_OPEN_MAX);
+    if (maxfd < 0)
+        maxfd = 256; /* fallback razonable */
+    for (int fd = 3; fd < (int)maxfd; ++fd)
+        close(fd);
 }
 
 // ranking final
@@ -92,6 +112,9 @@ static int spawn_player(const char *path, int pipefd[2], unsigned W, unsigned H)
         perror("pipe");
         exit(1);
     }
+    /* Evitar herencia accidental en exec si algo queda abierto */
+    set_cloexec(pipefd[0]);
+    set_cloexec(pipefd[1]);
     pid_t pid = fork();
     if (pid < 0)
     {
@@ -110,7 +133,11 @@ static int spawn_player(const char *path, int pipefd[2], unsigned W, unsigned H)
         char logpath[256];
         pid_t mypid = getpid();
         snprintf(logpath, sizeof(logpath), "./logs/player-%d.log", (int)mypid);
-        int lf = open(logpath, O_CREAT | O_WRONLY | O_APPEND, 0644);
+        int lf = open(logpath, O_CREAT | O_WRONLY | O_APPEND
+#ifdef O_CLOEXEC
+                                   | O_CLOEXEC
+#endif
+                                   , 0644);
         if (lf != -1)
         {
             (void)dup2(lf, 2);
@@ -118,6 +145,8 @@ static int spawn_player(const char *path, int pipefd[2], unsigned W, unsigned H)
         }
         close(pipefd[0]);
         close(pipefd[1]);
+        /* Asegurar que no queden FDs heredados antes del exec */
+        close_fds_except_stdio();
         char wbuf[16], hbuf[16];
         snprintf(wbuf, sizeof(wbuf), "%u", W);
         snprintf(hbuf, sizeof(hbuf), "%u", H);
@@ -143,7 +172,11 @@ static pid_t spawn_view(const char *path, unsigned W, unsigned H)
         char logpath[256];
         pid_t mypid = getpid();
         snprintf(logpath, sizeof(logpath), "./logs/view-%d.log", (int)mypid);
-        int lf = open(logpath, O_CREAT | O_WRONLY | O_APPEND, 0644);
+        int lf = open(logpath, O_CREAT | O_WRONLY | O_APPEND
+#ifdef O_CLOEXEC
+                                   | O_CLOEXEC
+#endif
+                                   , 0644);
         if (lf != -1)
         {
             (void)dup2(lf, 2);
@@ -247,11 +280,16 @@ int main(int argc, char *argv[])
                                                                          : default_player_path;
         pids[i] = spawn_player(pp, pf, W, H);
         rfd[i] = pf[0];
+        set_cloexec(rfd[i]);
         alive[i] = 1;
         /* abrir descriptor para que el master pueda anotar los bytes recibidos en el log del player */
         char logpath[256];
         snprintf(logpath, sizeof(logpath), "./logs/player-%d.log", (int)pids[i]);
-        int lf = open(logpath, O_CREAT | O_WRONLY | O_APPEND, 0644);
+        int lf = open(logpath, O_CREAT | O_WRONLY | O_APPEND
+#ifdef O_CLOEXEC
+                                   | O_CLOEXEC
+#endif
+                                   , 0644);
         if (lf == -1)
         {
             fprintf(stderr, "master: open('%s') failed: %s\n", logpath, strerror(errno));
@@ -588,5 +626,7 @@ int main(int argc, char *argv[])
 
     state_destroy(G);
     sync_destroy();
+    /* limpiar segmento shm remanente si el módulo de estado no lo desvincula */
+    (void)shm_remove_name(SHM_GAME_STATE);
     return 0;
 }
