@@ -21,7 +21,7 @@ static void print_usage(const char *prog) {
         "- d: delay entre impresiones en ms (default 200).\n"
         "- t: timeout para movimientos válidos en segundos (default 10s).\n"
         "- v: ruta de la vista (por ejemplo ./view_ncurses).\n"
-    "- p: entre 1 y 9 jugadores, ejecutables permitidos: 'player' o 'player2'.\n",
+        "- p: entre 1 y 9 jugadores, ejecutables permitidos: 'player' o 'player2'.\n",
         prog);
 }
 
